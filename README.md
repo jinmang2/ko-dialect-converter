@@ -81,3 +81,12 @@ $ python prepare_data.py
     pages = "484--494",
 }
 ```
+```
+@article{park-etal-2025-steering,
+    title = "Steering {LLM}s toward {K}orean Local Speech: Iterative Refinement Framework for Faithful Dialect Translation",
+    author = "Park, Keunhyeung and Yu, Seunguk and Kim, Youngbin",
+    journal = "arXiv preprint arXiv:2511.06680",
+    year = "2025",
+    url = "https://arxiv.org/abs/2511.06680",
+}
+```
