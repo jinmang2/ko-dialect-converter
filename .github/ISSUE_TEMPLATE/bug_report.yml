@@ -1,0 +1,74 @@
+name: Bug Report
+description: 코드 버그, 에러, 예기치 않은 동작 보고
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        버그를 보고해 주셔서 감사합니다. 재현에 필요한 정보를 최대한 상세히 작성해주세요.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: 관련 컴포넌트
+      multiple: true
+      options:
+        - data (데이터 전처리)
+        - model (모델 로딩/양자화)
+        - training (학습)
+        - evaluation (평가)
+        - serving / GGUF (서빙)
+        - CI/CD
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 버그 설명
+      placeholder: 어떤 문제가 발생했나요?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 방법
+      placeholder: |
+        1. 실행한 명령어 또는 코드
+        2. 사용한 config / 하이퍼파라미터
+        3. 에러 발생 시점
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대한 동작
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 실제 동작 / 에러 메시지
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: 환경 정보
+      value: |
+        - OS:
+        - Python:
+        - PyTorch:
+        - CUDA:
+        - GPU: RTX 2060 (8GB)
+        - unsloth version:
+        - trl version:
+        - transformers version:
+    validations:
+      required: false

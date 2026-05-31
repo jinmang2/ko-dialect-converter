@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install lint tools
+        run: pip install ruff black isort
+
+      - name: ruff
+        run: ruff check . --exclude .git
+
+      - name: black
+        run: black --check .
+
+      - name: isort
+        run: isort --check .
+
+  test:
+    name: Tests (CPU-only)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install test deps
+        run: pip install pytest pytest-cov
+
+      - name: Run tests (skip GPU, skip if no tests yet)
+        run: |
+          if [ -d "tests" ]; then
+            pytest tests/ -x -q -m "not gpu" --tb=short
+          else
+            echo "No tests directory yet — skipping"
+          fi

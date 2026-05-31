@@ -1,0 +1,105 @@
+name: Experiment Report
+description: 학습 실험 결과 기록 (하이퍼파라미터, 메트릭, 관찰)
+labels: ["experiment"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        실험 결과를 기록해두면 나중에 재현하거나 비교하기 편합니다.
+        모든 필드를 채울 필요는 없지만, 핵심 결과와 설정은 꼭 적어주세요.
+
+  - type: input
+    id: experiment-name
+    attributes:
+      label: 실험명
+      placeholder: "예: qlora-r16-경상도-epoch3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: method
+    attributes:
+      label: 학습 방법
+      options:
+        - QLoRA (4-bit NF4)
+        - PTQ + LoRA
+        - Full fine-tune (fp16)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: 핵심 하이퍼파라미터
+      render: yaml
+      value: |
+        model: Qwen/Qwen2.5-0.5B-Instruct
+        lora_r: 16
+        lora_alpha: 32
+        lora_dropout: 0.05
+        target_modules: [q_proj, v_proj]
+        batch_size: 4
+        gradient_accumulation_steps: 4
+        learning_rate: 2e-4
+        num_epochs: 3
+        max_seq_length: 512
+        quant_bits: 4
+    validations:
+      required: false
+
+  - type: dropdown
+    id: dialect
+    attributes:
+      label: 학습 방언
+      multiple: true
+      options:
+        - 강원도
+        - 경상도
+        - 전라도
+        - 제주도
+        - 충청도
+        - 전체
+    validations:
+      required: false
+
+  - type: textarea
+    id: results
+    attributes:
+      label: 결과 (메트릭)
+      render: markdown
+      placeholder: |
+        | Metric | Value |
+        |--------|-------|
+        | BLEU   |       |
+        | ChrF   |       |
+        | Dialect-Acc |  |
+    validations:
+      required: false
+
+  - type: textarea
+    id: vram
+    attributes:
+      label: 리소스 사용량
+      value: |
+        - Peak VRAM:  GB
+        - Train time: min/epoch
+        - GPU: RTX 2060 8GB
+    validations:
+      required: false
+
+  - type: textarea
+    id: observations
+    attributes:
+      label: 관찰 / 분석
+      placeholder: 잘 된 점, 안 된 점, 다음 실험 방향
+    validations:
+      required: false
+
+  - type: input
+    id: wandb-run
+    attributes:
+      label: WandB run URL (있으면)
+      placeholder: https://wandb.ai/...
+    validations:
+      required: false

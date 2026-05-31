@@ -1,0 +1,53 @@
+# PR auto-labeler — maps changed file paths to labels
+# Used by .github/workflows/labeler.yml (actions/labeler@v5)
+
+data:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/kodialect/data/**"
+      - "scripts/prepare_data.py"
+      - "data/**"
+
+model:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/kodialect/models/**"
+
+training:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/kodialect/training/**"
+      - "scripts/train.py"
+      - "configs/**"
+
+evaluation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/kodialect/evaluation/**"
+      - "scripts/evaluate.py"
+
+serving:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/kodialect/serving/**"
+      - "scripts/export_gguf.sh"
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - ".github/**"
+      - "pyproject.toml"
+      - ".pre-commit-config.yaml"
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "*.md"
+      - "docs/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "tests/**"

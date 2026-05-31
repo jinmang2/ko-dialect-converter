@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "kodialect"
+version = "0.2.0"
+description = "Korean dialect normalization via QLoRA fine-tuning"
+requires-python = ">=3.11"
+dependencies = [
+    # Core ML stack
+    "torch>=2.2.0",
+    "transformers>=4.44.0",
+    "datasets>=2.20.0",
+    "accelerate>=0.33.0",
+
+    # Fine-tuning
+    "trl>=0.9.6",
+    "peft>=0.12.0",
+    "bitsandbytes>=0.43.0",   # 4-bit NF4 quantization (QLoRA backbone)
+    # unsloth: install separately — wheel depends on CUDA version
+    # see: https://github.com/unslothai/unsloth#installation
+
+    # Evaluation
+    "evaluate>=0.4.2",
+    "sacrebleu>=2.4.0",
+    "rouge-score>=0.1.2",
+    "nltk>=3.8.0",
+
+    # Config & utilities
+    "pyyaml>=6.0",
+    "omegaconf>=2.3.0",
+    "rich>=13.0.0",
+    "tqdm>=4.66.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.4.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "mypy>=1.10.0",
+    "pre-commit>=3.7.0",
+    "types-PyYAML>=6.0.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+exclude = [".git", "__pycache__", "*.egg-info"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP"]
+ignore = ["E501"]  # line length handled by black
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gpu: requires CUDA GPU (skipped in CI)",
+]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
