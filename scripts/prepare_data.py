@@ -179,22 +179,93 @@ def _process_single_json(
         if not (standard and dialect):
             continue
 
-        # 어절 단위 방언 매핑
+        # 어절 단위 방언 매핑 (Double-ptr)
         s_time, e_time = t2s(sentence["startTime"]), t2s(sentence["endTime"])
         sentence_segments = [
             segment for segment in segments if s_time <= segment["_start_seconds"] <= e_time + 0.01
         ]
+        standard_words = (sentence.get("standard") or "").split()
+        dialect_words = (sentence.get("dialect") or "").split()
+        s_ptr, d_ptr = 0, 0
 
-        dialect_eojeol_map = [
-            {
-                "idx": int(segment["orderInFile"]) - 1,
-                "dialect": segment["dialect"],
-                "standard": segment["standard"],
-                "pronunciation": segment.get("pronumciation"),
-            }
-            for segment in sentence_segments
-            if segment.get("standard") is not None
-        ]
+        dialect_eojeol_map = []
+        for seg in sentence_segments:
+            seg_std_str = seg.get("standard")
+            seg_dia_str = seg.get("dialect") or ""
+
+            # Prevent ghost space edge cases
+            # ( e.g., st_set2_collectorgs444_speakergs3971_38_11_1, st_set1_collectorgs384_speakergs4099_23_5_1, st_set1_collectorgs384_speakergs3052_25_8_1 )
+            if seg_std_str is not None:
+                seg_std_str = seg_std_str.strip()
+            seg_dia_str = seg_dia_str.strip()
+
+            seg_dia_words = seg_dia_str.split()
+
+            # 1. 표준어 맵핑이 존재하는 사투리 변경 세그먼트인 경우
+            if seg_std_str is not None:
+                seg_std_words = seg_std_str.split()
+
+                # 표준어 단어 배열에서 현재 세그먼트 단어들의 시작 위치 검색
+                match_s = -1
+                for i in range(s_ptr, len(standard_words) - len(seg_std_words) + 1):
+                    if standard_words[i : i + len(seg_std_words)] == seg_std_words:
+                        match_s = i
+                        break
+
+                # 사투리 단어 배열에서 현재 세그먼트 단어들의 시작 위치 검색
+                match_d = -1
+                for j in range(d_ptr, len(dialect_words) - len(seg_dia_words) + 1):
+                    if dialect_words[j : j + len(seg_dia_words)] == seg_dia_words:
+                        match_d = j
+                        break
+
+                # 양쪽 다 정확한 위치를 찾은 경우에만 맵에 주입
+                if match_s != -1 and match_d != -1:
+                    # 단어 수가 일치하는 일반적인 사투리 변경 (1:1 unrolling)
+                    if len(seg_std_words) == len(seg_dia_words):
+                        for k in range(len(seg_std_words)):
+                            dialect_eojeol_map.append(
+                                {
+                                    "standard_idx": match_s + k,
+                                    "dialect_idx": match_d + k,
+                                    "dialect": seg_dia_words[k],
+                                    "standard": seg_std_words[k],
+                                    "pronunciation": seg.get("pronunciation"),
+                                }
+                            )
+                    else:
+                        # 축약/늘림 현상 발발 시 (ex: 가 버리고 -> 가삐고) [N:M 매핑]
+                        dialect_eojeol_map.append(
+                            {
+                                "standard_idx": match_s,
+                                "dialect_idx": match_d,
+                                "dialect": seg_dia_str,
+                                "standard": seg_std_str,
+                                "pronunciation": seg.get("pronunciation"),
+                            }
+                        )
+
+                    # 매칭된 길이만큼 포인터를 정확하게 전진
+                    s_ptr = match_s + len(seg_std_words)
+                    d_ptr = match_d + len(seg_dia_words)
+            else:
+                # 2. 표준어 필드가 없는 '동일 어절' 세그먼트인 경우
+                # 포인터 싱크를 유지하기 위해 단어가 매칭되는 지점만큼만 포인터들을 전진
+                match_s = -1
+                for i in range(s_ptr, len(standard_words) - len(seg_dia_words) + 1):
+                    if standard_words[i : i + len(seg_dia_words)] == seg_dia_words:
+                        match_s = i
+                        break
+                match_d = -1
+                for j in range(d_ptr, len(dialect_words) - len(seg_dia_words) + 1):
+                    if dialect_words[j : j + len(seg_dia_words)] == seg_dia_words:
+                        match_d = j
+                        break
+
+                if match_s != -1:
+                    s_ptr = match_s + len(seg_dia_words)
+                if match_d != -1:
+                    d_ptr = match_d + len(seg_dia_words)
 
         # 운율 요약
         prosody = summarize_intonation(sentence.get("intonations", []))
@@ -406,7 +477,7 @@ def main(
     verbose: bool = False,
     speedrun: bool = False,
     n_samples: int | None = None,
-    chunk_size: int = 100,
+    chunk_size: int = 1000,
     encoding: str = "utf-8",
     **kwargs,
 ) -> None:
@@ -414,6 +485,7 @@ def main(
     output_dir = Path(output_dir or Path(__file__).parents[1] / "outputs")
 
     if n_samples or speedrun:
+        speedrun = True
         n_samples = n_samples or 100
 
     if speedrun:
