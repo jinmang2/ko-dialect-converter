@@ -1,19 +1,53 @@
 from __future__ import annotations
 
-import json
 import os
 import random
 import re
 import shutil
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextlib import suppress
 from enum import StrEnum, auto
-from json import JSONDecodeError
 from pathlib import Path
-from typing import IO, Callable
+from typing import Callable
 
 import fire
 from datasets import Dataset, DatasetDict, load_from_disk
 from tqdm.auto import tqdm
+
+# ---------------------------------------------------------------------------
+# 🔥 High-Performance JSON Engine Auto-Fallback Setup
+# ---------------------------------------------------------------------------
+_USING_ORJSON = True
+try:
+    import orjson
+
+    load_json = orjson.loads
+    dump_json = orjson.dumps
+
+    def dump_jsonl(x, **kwargs):
+        return orjson.dumps(x) + b"\n"
+
+except ImportError:
+    _USING_ORJSON = False
+
+    def _get_dump_jsonl_fn(fn: Callable) -> Callable:
+        def dump_jsonl(x, **kwargs):
+            ensure_ascii = kwargs.pop("ensure_ascii", False)
+            return fn(x, ensure_ascii=ensure_ascii, **kwargs) + "\n"
+
+    try:
+        import ujson
+
+        load_json = ujson.loads
+        dump_json = ujson.dumps
+        dump_jsonl = _get_dump_jsonl_fn(ujson.dumps)
+    except ImportError:
+        import json
+
+        load_json = json.loads
+        dump_json = json.dumps
+        dump_jsonl = _get_dump_jsonl_fn(json.dumps)
 
 
 class SpeechKind(StrEnum):
@@ -23,12 +57,8 @@ class SpeechKind(StrEnum):
     UNKNOWN = auto()
 
 
-def get_json_files(
-    data_path: os.PathLike | str,
-    glob_pattern: str = "**/*.json",
-) -> list[Path]:
-    data_path = Path(data_path)
-    return list(data_path.glob(glob_pattern))
+def get_json_files(data_path: os.PathLike | str, glob_pattern: str = "**/*.json") -> list[Path]:
+    return list(Path(data_path).glob(glob_pattern))
 
 
 # ---------------------------------------------------------------------------
@@ -40,11 +70,6 @@ def t2s(t: str) -> float:
     """'00:00:01.230' -> 1.23"""
     h, m, s = t.split(":")
     return int(h) * 3600 + int(m) * 60 + float(s)
-
-
-def filter_segments_by_time(segments, start, end):
-    s, e = t2s(start), t2s(end)
-    return [seg for seg in segments if s <= t2s(seg["startTime"]) <= e + 0.01]
 
 
 def summarize_intonation(intonations: list[float]) -> dict | None:
@@ -93,8 +118,8 @@ def _process_single_json(
     with open(path, encoding=encoding) as f:
         s = f.read()
         try:
-            data = json.loads(s)
-        except JSONDecodeError:
+            data = load_json(s)
+        except Exception:
 
             def clean_json(s: str) -> str:
                 s = s.replace("\n", "").replace("\t", "")
@@ -102,9 +127,16 @@ def _process_single_json(
                 s = re.sub(r", +]", ",]", s)
                 s = s.replace(",}", "}").replace(",]", "]")
                 s = s.replace("'", '"').replace(".,", ",")
+
+                # Ignore error case ( e.g., ],,"transcriptionAnnotations" )
+                # TL_02._경상도_01._1인발화_따라말하기/st_set1_collectorgs100_speakergs442_54_10.json
+                s = re.sub(r'([}\]])\s*,\s*,\s*(?="[^"]+"\s*:)', r"\1,", s)
                 return s
 
-            data = json.loads(clean_json(s))
+            try:
+                data = load_json(clean_json(s))
+            except Exception:
+                return []
 
     if not isinstance(data, dict):
         return []
@@ -129,10 +161,17 @@ def _process_single_json(
     elif path.stem.startswith("talk_"):
         speech_kind = SpeechKind.TALK.value
 
-    samples = []
     sentences = data.get("transcription", {}).get("sentences", [])
     segments = data.get("transcription", {}).get("segments", [])
+    for segment in segments:
+        # Ignore error cases ( "startTime": None, "endTime": None )
+        # TL_01._강원도_01._1인발화_따라말하기/st_set1_collectorgw132_speakergw2151_72_11.json
+        # VL_02._경상도_01._1인발화_따라말하기/st_set3_collectorgs198_speakergs1537_27_9.json
+        # VL_02._경상도_01._1인발화_따라말하기/st_set3_collectorgs244_speakergs2933_29_8.json
+        st_raw = segment.get("startTime")
+        segment["_start_seconds"] = t2s(st_raw) if st_raw else -1.0
 
+    samples = []
     for sentence in sentences:
         standard = (sentence.get("standard") or "").strip()
         dialect = (sentence.get("dialect") or "").strip()
@@ -141,9 +180,10 @@ def _process_single_json(
             continue
 
         # 어절 단위 방언 매핑
-        sentence_segments = filter_segments_by_time(
-            segments, sentence["startTime"], sentence["endTime"]
-        )
+        s_time, e_time = t2s(sentence["startTime"]), t2s(sentence["endTime"])
+        sentence_segments = [
+            segment for segment in segments if s_time <= segment["_start_seconds"] <= e_time + 0.01
+        ]
 
         dialect_eojeol_map = [
             {
@@ -190,8 +230,6 @@ def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
     region = REGION_MAP.get(m.group(1), m.group(1)) if m else "unknown"
     split = _SPLIT_MAP.get(path.parent.name, path.parent.name.lower())
 
-    speech_kind = SpeechKind.READ.value
-
     # Construct samples
     samples = []
     for utterance in data["utterance"]:
@@ -216,7 +254,7 @@ def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
                 "id": utterance["id"],
                 "do": region,
                 "split": split,
-                "speech_kind": speech_kind,
+                "speech_kind": SpeechKind.READ.value,
                 "standard": standard,
                 "dialect": dialect,
                 "is_identical": standard == dialect,
@@ -228,77 +266,136 @@ def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
     return samples
 
 
+def _process_chunk_worker(
+    file_chunk: list[Path],
+    worker_id: int,
+    tmp_dir: Path,
+    **fn_kwargs,
+) -> list[dict]:
+    encoding = fn_kwargs.get("encoding", "utf-8")
+    local_handles = {}
+    local_failed = []
+
+    mode = "ab" if _USING_ORJSON else "a"
+    open_kwargs = {} if _USING_ORJSON else {"encoding": encoding}
+
+    for split in ["train", "valid", "unknown"]:
+        local_handles[split] = open(
+            tmp_dir / f"{split}_worker_{worker_id}.jsonl", mode, **open_kwargs
+        )
+
+    for f in file_chunk:
+        try:
+            result = _process_single_json(f, **fn_kwargs)
+            if not result:
+                local_failed.append({"file": str(f), "error": "empty or invalid"})
+                continue
+            for sample in result:
+                split = sample.get("split", "unknown")
+                local_handles[split].write(dump_jsonl(sample))
+        except Exception as e:
+            local_failed.append({"file": str(f), "error": str(e)})
+
+    for fh in local_handles.values():
+        fh.close()
+    return local_failed
+
+
+# ---------------------------------------------------------------------------
+# Main Pipeline Orchestrator
+# ---------------------------------------------------------------------------
+
+
 def prepare_dialect_dataset(
     files: list[Path],
     output_dir: Path,
     **kwargs,
 ) -> DatasetDict:
+    start_time = time.perf_counter()
+
     verbose = kwargs.pop("verbose", False)
+    use_old_format = kwargs.get("use_old_format", False)
+
     tmp_dir = output_dir / "_jsonl_tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
-
-    # file_handles: split name → open file handle, created on first encounter
-    file_handles: dict[str, IO[str]] = {}
     failed: list[dict] = []
-    n_written: int = 0
 
-    def _run_parallel(fn: Callable, max_workers: int | None = None, **fn_kwargs):
-        nonlocal n_written
+    def _cleanup_resources(delete_tmp: bool = False):
+        if delete_tmp and tmp_dir.exists():
+            with suppress(Exception):
+                shutil.rmtree(tmp_dir)
+
+    def _run_parallel(max_workers: int | None = None, chunk_size: int = 1000, **fn_kwargs):
+        max_workers = max_workers or os.cpu_count() or 4
         encoding = fn_kwargs.get("encoding", "utf-8")
 
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_file = {executor.submit(fn, f, **fn_kwargs): f for f in files}
-            pbar = tqdm(total=len(files), desc="Processing", disable=not verbose)
-            for future in as_completed(future_to_file):
-                src = future_to_file[future]
-                try:
-                    result = future.result()
-                    if not result:
-                        failed.append({"file": str(src), "error": "empty or invalid"})
-                        continue
-                    for sample in result:
-                        split = sample["split"]
-                        if split not in file_handles:
-                            file_handles[split] = open(
-                                tmp_dir / f"{split}.jsonl", "a", encoding=encoding
-                            )
-                        file_handles[split].write(json.dumps(sample, ensure_ascii=False) + "\n")
-                        n_written += 1
-                except Exception as e:
-                    failed.append({"file": str(src), "error": str(e)})
-                    if verbose:
-                        tqdm.write(f"[Error] {src}: {e}")
-                finally:
-                    pbar.update(1)
+        # 태스크 균등 분할
+        chunks = [files[i : i + chunk_size] for i in range(0, len(files), chunk_size)]
+        executor = ProcessPoolExecutor(max_workers=max_workers)
+
+        futures = {
+            executor.submit(_process_chunk_worker, chunk, i, tmp_dir, **fn_kwargs): len(chunk)
+            for i, chunk in enumerate(chunks)
+        }
+        pbar = tqdm(total=len(files), desc="Processing Files", disable=not verbose)
+
+        try:
+            for future in as_completed(futures):
+                local_failed = future.result()
+                if local_failed:
+                    failed.extend(local_failed)
+                pbar.update(futures[future])
+        except KeyboardInterrupt:
+            tqdm.write(
+                "\n🚨 [정지] 사용자가 중단했습니다. 자식 프로세스 청소 후 즉시 강제 종료합니다..."
+            )
+            executor.shutdown(wait=False, cancel_futures=True)
+            _cleanup_resources(delete_tmp=True)
+            os._exit(1)
+        finally:
             pbar.close()
+            executor.shutdown(wait=True)
 
     try:
-        _run_parallel(fn=_process_single_json, **kwargs)
+        _run_parallel(**kwargs)
+
+        if failed:
+            failed_path = output_dir / "failed_files.json"
+            with open(failed_path, "w", encoding="utf-8") as f:
+                if _USING_ORJSON:
+                    f.write(orjson.dumps(failed, option=orjson.OPT_INDENT_2).decode("utf-8"))
+                else:
+                    import json
+
+                    json.dump(failed, f, ensure_ascii=False, indent=2)
+            tqdm.write(f"[Warning] {len(failed)} failed files → {failed_path}")
+
+        # 🔄 [Reduce]
+        splits_found = []
+        for split in ["train", "valid"]:
+            worker_files = list(tmp_dir.glob(f"{split}_worker_*.jsonl"))
+            if not worker_files:
+                continue
+            splits_found.append(split)
+
+            with open(tmp_dir / f"{split}.jsonl", "wb") as master_f:
+                for wf in worker_files:
+                    with open(wf, "rb") as f:
+                        shutil.copyfileobj(f, master_f)  # 커널 레벨 고속 버퍼 스트리밍
+                    wf.unlink()
+
+        dataset = DatasetDict(
+            {split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl")) for split in splits_found}
+        )
+        save_path = output_dir / f"dialect_raw_{'old' if use_old_format else 'new'}"
+        dataset.save_to_disk(str(save_path))
+
+        elapsed = time.perf_counter() - start_time
+        print(f"Saved {sum(len(v) for v in dataset.values())} samples → {save_path}")
+        print(f"⏱️ Total Elapsed Time: {int(elapsed // 60)}m {elapsed % 60:.2f}s")
+        return dataset
     finally:
-        for fh in file_handles.values():
-            fh.close()
-
-    total = len(files)
-    print(
-        f"Done: {n_written} samples from {total - len(failed)}/{total} files"
-        f" ({len(failed)} failed)"
-    )
-
-    if failed:
-        failed_path = output_dir / "failed_files.json"
-        with open(failed_path, "w", encoding="utf-8") as f:
-            json.dump(failed, f, ensure_ascii=False, indent=2)
-        tqdm.write(f"[Warning] {len(failed)} failed files → {failed_path}")
-
-    dataset = DatasetDict(
-        {split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl")) for split in file_handles}
-    )
-    save_path = output_dir / "dialect_raw"
-    dataset.save_to_disk(str(save_path))
-    print(f"Saved {sum(len(v) for v in dataset.values())} samples → {save_path}")
-
-    shutil.rmtree(tmp_dir)
-    return dataset
+        _cleanup_resources(delete_tmp=True)
 
 
 def main(
@@ -309,15 +406,12 @@ def main(
     verbose: bool = False,
     speedrun: bool = False,
     n_samples: int | None = None,
+    chunk_size: int = 100,
     encoding: str = "utf-8",
     **kwargs,
 ) -> None:
-    data_path = Path(
-        data_path or Path(__file__).parents[1] / "data"
-    ) # fmt: skip
-    output_dir = Path(
-        output_dir or Path(__file__).parents[1] / "outputs"
-    ) # fmt: skip
+    data_path = Path(data_path or Path(__file__).parents[1] / "data")
+    output_dir = Path(output_dir or Path(__file__).parents[1] / "outputs")
 
     if n_samples or speedrun:
         n_samples = n_samples or 100
@@ -351,6 +445,7 @@ def main(
         verbose=verbose,
         encoding=encoding,
         use_old_format=use_old_format,
+        chunk_size=chunk_size,
     )
 
 
