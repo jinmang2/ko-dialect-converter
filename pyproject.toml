@@ -9,15 +9,17 @@ description = "Korean dialect ↔ standard Korean via QLoRA / GRPO fine-tuning"
 requires-python = ">=3.11"
 dependencies = [
     # Core ML stack
-    "torch>=2.2.0",
-    "transformers>=4.44.0",
-    "datasets>=2.20.0",
-    "accelerate>=0.33.0",
+    # "torch>=2.2.0", # make install-torch
+    "transformers",
+    "datasets",
+    "accelerate",
+    "peft",
+    "trl",
+    "huggingface_hub",
+    "bitsandbytes",
+    "torchao",
 
-    # Fine-tuning
-    "trl>=0.9.6",
-    "peft>=0.12.0",
-    "bitsandbytes>=0.43.0",
+    # Fine-tuning notes (pinned dupes removed; see top block)
     # deepspeed: optional, install separately for ZeRO offload
     # unsloth: install separately (CUDA-specific wheel)
     # see: https://github.com/unslothai/unsloth#installation
@@ -28,16 +30,29 @@ dependencies = [
     "rouge-score>=0.1.2",
     "scikit-learn>=1.4.0",
 
+    # Data generation / serialization
+    "openai>=1.50",
+    "google-genai",
+    "orjson",
+    "ujson",
+
     # Config & CLI
     "pyyaml>=6.0",
     "fire>=0.6.0",
     "rich>=13.0.0",
     "tqdm>=4.66.0",
+    "hydra-core>=1.3.0",
+    "ipywidgets",
+    "open-webui",
 
     # Experiment management
-    "hydra-core>=1.3.0",
     "mlflow>=2.15.0",
     "wandb>=0.17.0",
+
+    # Resolve requests dependency warning
+    "requests>=2.31.0",
+    "urllib3>=1.26.18",
+    "charset-normalizer>=3.3.2",
 ]
 
 [project.optional-dependencies]
@@ -51,6 +66,9 @@ dev = [
     "pre-commit>=3.7.0",
     "types-PyYAML>=6.0.0",
 ]
+eval  = ["lm_eval>=0.4"]
+vllm  = ["vllm"]
+wandb = ["wandb>=0.18", "hydra-core>=1.3"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

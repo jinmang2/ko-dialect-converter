@@ -174,3 +174,4 @@ unsloth_compiled_cache/
 # Project
 outputs/
 .omc/
+.claude/
