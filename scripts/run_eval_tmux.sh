@@ -39,6 +39,12 @@ N_SAMPLES="${N_SAMPLES:-500}"
 MAX_NEW_TOKENS="${MAX_NEW_TOKENS:-128}"
 BATCH_SIZE="${BATCH_SIZE:-16}"
 
+# Conda: a fresh tmux shell is non-interactive and does NOT auto-activate your
+# env, so the eval would run against base python (missing sentencepiece etc).
+# Capture the env active at launch (override with CONDA_ENV=...) and re-activate
+# it inside the session. Set CONDA_ENV="" to skip activation entirely.
+CONDA_ENV="${CONDA_ENV-${CONDA_DEFAULT_ENV:-}}"
+
 LOG_DIR="${LOG_DIR:-${PROJECT_ROOT}/outputs/eval_logs}"
 TS="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="${LOG_DIR}/eval_${TARGET_DO}_${TS}.log"
@@ -54,10 +60,32 @@ warn() { printf '%s[eval]%s %s\n' "${c_yel}" "${c_off}" "$*"; }
 
 session_exists() { "${TM[@]}" has-session -t "${SESSION}" 2>/dev/null; }
 
+conda_activate_snippet() {
+  # Emit a `conda activate <env> && ` prefix, or nothing if no env / conda not found.
+  [ -z "${CONDA_ENV}" ] && return 0
+  local base=""
+  if [ -n "${CONDA_EXE:-}" ]; then
+    base="$(dirname "$(dirname "${CONDA_EXE}")")"
+  elif [ -n "${CONDA_PREFIX:-}" ]; then
+    # CONDA_PREFIX points at the active env; strip envs/<name> to get base.
+    base="${CONDA_PREFIX%%/envs/*}"
+  fi
+  if [ -n "${base}" ] && [ -f "${base}/etc/profile.d/conda.sh" ]; then
+    printf 'source "%s/etc/profile.d/conda.sh" && conda activate "%s" && ' \
+      "${base}" "${CONDA_ENV}"
+  else
+    # Fall back to whatever `conda` is on PATH (tmux inherits the launch env).
+    printf 'conda activate "%s" && ' "${CONDA_ENV}"
+  fi
+}
+
 build_cmd() {
   # Printed and executed inside the session; tee keeps a logfile while showing live.
+  # Trailing `exec bash` keeps the pane alive after the command ends (even on a
+  # crash) so you can attach and drag-scroll the logs instead of the pane closing.
+  local activate; activate="$(conda_activate_snippet)"
   cat <<EOF
-cd "${PROJECT_ROOT}" && \
+${activate}cd "${PROJECT_ROOT}" && \
 python scripts/evaluate.py \
   --model_path "${MODEL_PATH}" \
   --raw_dataset_path "${RAW_DATASET_PATH}" \
@@ -70,7 +98,8 @@ python scripts/evaluate.py \
   --output_file "${RESULT_FILE}" \
   2>&1 | tee "${LOG_FILE}"; \
 echo; echo "=== eval finished (exit \${PIPESTATUS[0]}) — results: ${RESULT_FILE} ==="; \
-echo "Press Ctrl-b d to detach, or q after dragging to scroll."
+echo "Drag up to scroll logs (q to exit scroll), Ctrl-b d to detach, or 'exit' to close."; \
+exec bash
 EOF
 }
 
@@ -89,7 +118,7 @@ cmd_run() {
   "${TM[@]}" set-environment -t "${SESSION}" TMUX_CONF_PATH "${TMUX_CONF_PATH}" || true
 
   ok   "started session '${SESSION}' (socket ${SOCKET})"
-  info "model=${MODEL_PATH}  do=${TARGET_DO}  n=${N_SAMPLES}  batch=${BATCH_SIZE}"
+  info "conda=${CONDA_ENV:-<none>}  model=${MODEL_PATH}  do=${TARGET_DO}  n=${N_SAMPLES}  batch=${BATCH_SIZE}"
   info "logfile: ${LOG_FILE}"
   echo
   printf '  %sattach & watch:%s  %s\n' "${c_bold}" "${c_off}" "scripts/run_eval_tmux.sh attach"
