@@ -102,9 +102,11 @@ def _compute_metrics(eval_pred):
     import numpy as np
 
     preds, labels = eval_pred  # preds: (N, T, 2), labels: (N, T)
+    # logits[i]는 token[i+1]을 예측 → 정렬 맞추기
+    argmax = np.round(preds[:, :-1, 0]).astype(np.int64)
+    entropy = preds[:, :-1, 1]
+    labels = labels[:, 1:]
     mask = labels != -100
-    argmax = np.round(preds[..., 0]).astype(np.int64)
-    entropy = preds[..., 1]
     accuracy = float((argmax[mask] == labels[mask]).mean())
     mean_entropy = float(entropy[mask].mean())
     return {"token_accuracy": accuracy, "mean_entropy": mean_entropy}
@@ -121,6 +123,7 @@ def _render_structured(dataset, tokenizer, template, loss_on: str):
     cols = dataset.column_names
 
     if loss_on == "assistant":
+
         def _to(ex):
             return {
                 "messages": template.format_messages(
@@ -131,11 +134,10 @@ def _render_structured(dataset, tokenizer, template, loss_on: str):
         return dataset.map(_to, remove_columns=cols)
 
     if loss_on == "completion":
+
         def _to(ex):
             return {
-                "prompt": template.build_prompt(
-                    tokenizer, ex["source"], ex["do"], ex["direction"]
-                ),
+                "prompt": template.build_prompt(tokenizer, ex["source"], ex["do"], ex["direction"]),
                 "completion": ex["target"],
             }
 
@@ -144,9 +146,7 @@ def _render_structured(dataset, tokenizer, template, loss_on: str):
     # loss_on == "all"
     def _to(ex):
         return {
-            "text": template.apply(
-                tokenizer, ex["source"], ex["target"], ex["do"], ex["direction"]
-            )
+            "text": template.apply(tokenizer, ex["source"], ex["target"], ex["do"], ex["direction"])
         }
 
     return dataset.map(_to, remove_columns=cols)
