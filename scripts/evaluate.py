@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 import fire
@@ -19,6 +20,49 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger(__name__)
 
 
+@torch.no_grad()
+def generate_batched(
+    model,
+    tokenizer,
+    prompts: list[str],
+    device,
+    batch_size: int = 16,
+    max_new_tokens: int = 128,
+) -> list[str]:
+    """Greedy-decode ``prompts`` in batches.
+
+    Decoder-only models require **left padding** for correct batched generation:
+    right padding would push pad tokens between the prompt and the first generated
+    token, corrupting the output. With left padding every row shares the same input
+    length, so a single slice recovers the generated continuation for the whole batch.
+    """
+    prev_side = tokenizer.padding_side
+    tokenizer.padding_side = "left"
+    outputs: list[str] = []
+    try:
+        for start in range(0, len(prompts), batch_size):
+            chunk = prompts[start : start + batch_size]
+            enc = tokenizer(
+                chunk,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+            ).to(device)
+            gen_ids = model.generate(
+                **enc,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
+                pad_token_id=tokenizer.pad_token_id,
+            )
+            new_ids = gen_ids[:, enc["input_ids"].shape[1] :]
+            decoded = tokenizer.batch_decode(new_ids, skip_special_tokens=True)
+            outputs.extend(text.strip() for text in decoded)
+            logger.info("Generated %d / %d", len(outputs), len(prompts))
+    finally:
+        tokenizer.padding_side = prev_side
+    return outputs
+
+
 def main(
     model_path: str,
     raw_dataset_path: str,
@@ -28,6 +72,7 @@ def main(
     split: str = "valid",
     n_samples: int = 500,
     max_new_tokens: int = 128,
+    batch_size: int = 16,
     output_file: str | None = None,
 ) -> None:
     """
@@ -40,6 +85,8 @@ def main(
         split: Dataset split to evaluate on.
         n_samples: Number of samples to evaluate (0 = all).
         max_new_tokens: Max tokens to generate per sample.
+        batch_size: Prompts decoded per forward pass. Larger = faster until VRAM
+            saturates; on an 8 GB RTX 2060, 16-32 is a good starting point.
         output_file: Optional JSON file to write metric results.
     """
     logger.info("Loading generation model from %s", model_path)
@@ -66,28 +113,32 @@ def main(
     )
     if n_samples and n_samples < len(eval_ds):
         eval_ds = eval_ds.select(range(n_samples))
-    logger.info("Evaluating on %d samples", len(eval_ds))
+    logger.info("Evaluating on %d samples (batch_size=%d)", len(eval_ds), batch_size)
 
     template = ChatTemplate()
-    outputs_text, dialect_refs, standard_refs, eojeol_maps = [], [], [], []
+    prompts = [
+        template.build_prompt(tokenizer, sample["standard"], target_do, "std2dia")
+        for sample in eval_ds
+    ]
+    dialect_refs = [s["dialect"] for s in eval_ds]
+    standard_refs = [s["standard"] for s in eval_ds]
+    eojeol_maps = [s.get("dialect_eojeol_map") or [] for s in eval_ds]
 
-    for sample in eval_ds:
-        prompt = template.build_prompt(tokenizer, sample["standard"], target_do, "std2dia")
-        inputs = tokenizer(prompt, return_tensors="pt").to(device)
-        with torch.no_grad():
-            gen_ids = model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                pad_token_id=tokenizer.eos_token_id,
-            )
-        generated = tokenizer.decode(
-            gen_ids[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True
-        )
-        outputs_text.append(generated.strip())
-        dialect_refs.append(sample["dialect"])
-        standard_refs.append(sample["standard"])
-        eojeol_maps.append(sample.get("dialect_eojeol_map") or [])
+    t0 = time.perf_counter()
+    outputs_text = generate_batched(
+        model,
+        tokenizer,
+        prompts,
+        device,
+        batch_size=batch_size,
+        max_new_tokens=max_new_tokens,
+    )
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "Generation done in %.1fs (%.3fs/sample)",
+        elapsed,
+        elapsed / max(len(prompts), 1),
+    )
 
     results = evaluate_all(
         outputs=outputs_text,
