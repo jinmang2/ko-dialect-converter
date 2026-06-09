@@ -33,6 +33,33 @@ class ClassifierTrainerConfig:
     report_to: list[str] = field(default_factory=list)
 
 
+def compute_class_weights(
+    labels,
+    num_labels: int,
+    scheme: str = "balanced",
+) -> list[float]:
+    """Derive per-class CrossEntropyLoss weights from a label sequence.
+
+    - ``"balanced"`` (sklearn convention): ``n_samples / (num_labels * count[c])``
+      — mean weight ≈ 1, rare classes weighted up.
+    - ``"inverse"``: ``1 / count[c]``, renormalized so the weights sum to
+      ``num_labels`` (same scale as ``balanced`` but sharper on rare classes).
+
+    Empty classes are treated as count 1 to avoid division by zero.
+    """
+    counts = np.bincount(np.asarray(labels), minlength=num_labels).astype(np.float64)
+    counts[counts == 0] = 1.0
+    n = counts.sum()
+    if scheme == "balanced":
+        w = n / (num_labels * counts)
+    elif scheme == "inverse":
+        w = 1.0 / counts
+        w = w * num_labels / w.sum()
+    else:
+        raise ValueError(f"scheme must be 'balanced' or 'inverse', got {scheme!r}.")
+    return w.tolist()
+
+
 def _compute_metrics(eval_pred):
     logits, labels = eval_pred
     preds = np.argmax(logits, axis=-1)

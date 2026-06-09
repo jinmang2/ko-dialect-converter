@@ -13,7 +13,11 @@ from transformers import AutoTokenizer
 from ko_dialect.data import ClassifierCollator
 from ko_dialect.models import TextCNNConfig, TextCNNForSequenceClassification
 from ko_dialect.tracking import setup_tracking
-from ko_dialect.training import ClassifierTrainerConfig, train_classifier
+from ko_dialect.training import (
+    ClassifierTrainerConfig,
+    compute_class_weights,
+    train_classifier,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -48,7 +52,32 @@ def main(cfg: DictConfig) -> None:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model_cfg = TextCNNConfig(vocab_size=tokenizer.vocab_size or 32000)
+    # Resolve class weights from the train split per cfg.model.class_weighting.
+    model_cfg_node = cfg.get("model", {})
+    weighting = str(model_cfg_node.get("class_weighting", "none"))
+    num_labels = 3
+    class_weights = None
+    if weighting == "manual":
+        manual = model_cfg_node.get("class_weights")
+        if manual is None:
+            raise ValueError("class_weighting=manual requires model.class_weights to be set.")
+        class_weights = list(manual)
+    elif weighting in ("balanced", "inverse"):
+        class_weights = compute_class_weights(ds["train"]["label"], num_labels, scheme=weighting)
+    elif weighting != "none":
+        raise ValueError(f"Unknown class_weighting={weighting!r}.")
+    if class_weights is not None:
+        logger.info("Class weights (%s): %s", weighting, class_weights)
+
+    # NOTE: use len(tokenizer), not tokenizer.vocab_size — the latter excludes
+    # the 22 added special tokens (e.g. pad/eos ids 151643+), so sizing the
+    # embedding to vocab_size makes pad lookups go out of bounds → CUDA assert.
+    model_cfg = TextCNNConfig(
+        vocab_size=len(tokenizer),
+        pad_token_id=tokenizer.pad_token_id,
+        num_labels=num_labels,
+        class_weights=class_weights,
+    )
     model = TextCNNForSequenceClassification(model_cfg)
     logger.info(
         "TextCNN params: %s",

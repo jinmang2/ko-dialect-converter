@@ -8,6 +8,15 @@ data:
   tokenizer_name: Qwen/Qwen2.5-0.5B-Instruct
   max_length: 128
 
+model:
+  # Counter the standard-vs-dialect imbalance via class-weighted CrossEntropyLoss.
+  #   class_weighting: none      -> unweighted (default off)
+  #                    balanced  -> n / (num_labels * count[c])  (sklearn convention)
+  #                    inverse   -> 1/count[c], renormalized to sum=num_labels
+  #                    manual    -> use the explicit class_weights list below
+  class_weighting: none
+  class_weights: null  # e.g. [1.0, 3.0, 1.5]; only used when class_weighting=manual
+
 experiment:
   name: ko-dialect-classifier
   run_name: null

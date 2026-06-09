@@ -15,6 +15,11 @@ ID2LABEL: dict[int, str] = {v: k for k, v in LABEL2ID.items()}
 
 class TextCNNConfig(PretrainedConfig):
     model_type = "textcnn"
+    # Trainer's eval loop accumulates every non-loss output tensor across the
+    # WHOLE eval set. Without this, hidden_states (B, 512) for all 150k+ valid
+    # rows piles onto the GPU (multi-GiB spike + O(n^2) concat slowdown) and
+    # also breaks compute_metrics by making predictions a (logits, hidden) tuple.
+    keys_to_ignore_at_inference = ["hidden_states"]
 
     def __init__(
         self,
@@ -27,6 +32,7 @@ class TextCNNConfig(PretrainedConfig):
         id2label: dict | None = None,
         label2id: dict | None = None,
         pad_token_id: int = 0,
+        class_weights: list[float] | None = None,
         **kwargs,
     ):
         super().__init__(
@@ -41,6 +47,10 @@ class TextCNNConfig(PretrainedConfig):
         self.filter_sizes = filter_sizes or [2, 3, 4, 5]
         self.num_filters = num_filters or [128, 128, 128, 128]
         self.dropout = dropout
+        # Per-class CrossEntropyLoss weights (len == num_labels) to counter the
+        # standard-vs-dialect imbalance. ``None`` => unweighted loss. Serialized
+        # with the config so a saved classifier remembers how it was trained.
+        self.class_weights = class_weights
 
 
 @dataclass
@@ -106,6 +116,11 @@ class TextCNNForSequenceClassification(PreTrainedModel):
 
         loss: torch.Tensor | None = None
         if labels is not None:
-            loss = nn.CrossEntropyLoss()(logits, labels)
+            weight = None
+            if self.config.class_weights is not None:
+                weight = torch.as_tensor(
+                    self.config.class_weights, dtype=logits.dtype, device=logits.device
+                )
+            loss = nn.CrossEntropyLoss(weight=weight)(logits, labels)
 
         return TextCNNOutput(loss=loss, logits=logits, hidden_states=hidden)

@@ -1,4 +1,4 @@
-from .classifier_trainer import ClassifierTrainerConfig
+from .classifier_trainer import ClassifierTrainerConfig, compute_class_weights
 from .classifier_trainer import train as train_classifier
 from .grpo_trainer import GRPOConfig, build_reward_fns
 from .grpo_trainer import train as train_grpo
@@ -13,5 +13,6 @@ __all__ = [
     "build_reward_fns",
     "train_grpo",
     "ClassifierTrainerConfig",
+    "compute_class_weights",
     "train_classifier",
 ]

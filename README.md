@@ -70,6 +70,15 @@ python scripts/stage1_sft.py \
   experiment.run_name=sft-qwen-v1 \
   data.sft_dataset_path=outputs/datasets/sft
 
+python scripts/stage2_train_classifier.py \
+  data.cls_dataset_path=outputs/datasets/classifier \
+  logger=wandb \
+  experiment.run_name=cls-textcnn-v1 \
+  training.per_device_train_batch_size=128 \
+  training.per_device_eval_batch_size=256 \
+  training.eval_strategy=steps \
+  training.eval_steps=200 \
+  training.logging_steps=100
 
 python scripts/stage1_sft.py \
   data.sft_dataset_path=outputs/datasets/sft \
@@ -82,6 +91,14 @@ python scripts/stage1_sft.py \
   training.logging_steps=10 \
   'training.output_dir=outputs/sft_speedrun'
 
+```
+```
+# rebuild — combine downsample + (later) weighted loss
+python scripts/stage0_build_datasets.py --raw_dataset_path outputs/dialect_raw_new \
+    --cls_standard_cap_ratio 2.0
+# train with weighted loss
+python scripts/stage2_train_classifier.py data.cls_dataset_path=outputs/datasets/classifier \
+    model.class_weighting=balanced
 ```
 
 ## Data preparing

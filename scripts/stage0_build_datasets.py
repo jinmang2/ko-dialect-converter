@@ -27,6 +27,10 @@ def main(
     both_directions: bool = True,
     template_name: str = "default",
     output_mode: str = "text",
+    cls_filter_identical: bool = True,
+    cls_max_per_label: int | None = None,
+    cls_standard_cap_ratio: float | None = None,
+    seed: int = 42,
 ) -> None:
     """
     Args:
@@ -37,6 +41,12 @@ def main(
         template_name: Registered chat template (see data/template.py).
         output_mode: "text" (pre-render chat string) or "structured" (store raw fields so
             the template/loss-mask can be swapped at train time without rebuilding).
+        cls_filter_identical: Drop the dialect copy when standard == dialect (no markers).
+            Leave True — disabling reintroduces ~20% contradictory labels.
+        cls_max_per_label: Hard cap on rows per classifier label (None = no cap).
+        cls_standard_cap_ratio: Cap the standard class to this multiple of the largest
+            dialect class, e.g. 2.0 (None = no cap). Train split only.
+        seed: RNG seed for classifier downsampling.
     """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -67,7 +77,13 @@ def main(
     logger.info("GRPO saved: %s", grpo_ds)
 
     logger.info("Building classifier dataset ...")
-    cls_ds = build_classification_dataset(dataset)
+    cls_ds = build_classification_dataset(
+        dataset,
+        filter_identical=cls_filter_identical,
+        max_per_label=cls_max_per_label,
+        standard_cap_ratio=cls_standard_cap_ratio,
+        seed=seed,
+    )
     cls_ds.save_to_disk(str(out / "classifier"))
     logger.info("Classifier saved: %s", cls_ds)
 
