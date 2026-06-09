@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
-name = "kodialect"
+name = "ko-dialect-converter"
 version = "0.2.0"
-description = "Korean dialect normalization via QLoRA fine-tuning"
+description = "Korean dialect ↔ standard Korean via QLoRA / GRPO fine-tuning"
 requires-python = ">=3.11"
 dependencies = [
     # Core ML stack
@@ -17,21 +17,27 @@ dependencies = [
     # Fine-tuning
     "trl>=0.9.6",
     "peft>=0.12.0",
-    "bitsandbytes>=0.43.0",   # 4-bit NF4 quantization (QLoRA backbone)
-    # unsloth: install separately — wheel depends on CUDA version
+    "bitsandbytes>=0.43.0",
+    # deepspeed: optional, install separately for ZeRO offload
+    # unsloth: install separately (CUDA-specific wheel)
     # see: https://github.com/unslothai/unsloth#installation
 
     # Evaluation
     "evaluate>=0.4.2",
     "sacrebleu>=2.4.0",
     "rouge-score>=0.1.2",
-    "nltk>=3.8.0",
+    "scikit-learn>=1.4.0",
 
-    # Config & utilities
+    # Config & CLI
     "pyyaml>=6.0",
-    "omegaconf>=2.3.0",
+    "fire>=0.6.0",
     "rich>=13.0.0",
     "tqdm>=4.66.0",
+
+    # Experiment management
+    "hydra-core>=1.3.0",
+    "mlflow>=2.15.0",
+    "wandb>=0.17.0",
 ]
 
 [project.optional-dependencies]
@@ -46,22 +52,24 @@ dev = [
     "types-PyYAML>=6.0.0",
 ]
 
-[tool.black]
-line-length = 88
-target-version = ["py311"]
-
-[tool.isort]
-profile = "black"
-line_length = 88
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.ruff]
-line-length = 88
+line-length = 100
 target-version = "py311"
 exclude = [".git", "__pycache__", "*.egg-info"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
-ignore = ["E501"]  # line length handled by black
+ignore = ["E501", "F821"]
+
+[tool.ruff.lint.isort]
+known-local-folder = ["app", "src"]
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

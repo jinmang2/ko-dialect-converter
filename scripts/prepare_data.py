@@ -4,6 +4,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import suppress
@@ -35,6 +36,8 @@ except ImportError:
         def dump_jsonl(x, **kwargs):
             ensure_ascii = kwargs.pop("ensure_ascii", False)
             return fn(x, ensure_ascii=ensure_ascii, **kwargs) + "\n"
+
+        return dump_jsonl
 
     try:
         import ujson
@@ -75,14 +78,16 @@ def t2s(t: str) -> float:
 def summarize_intonation(intonations: list[float]) -> dict | None:
     """raw F0 시계열 -> 요약 통계 (None 값/0 값 제외)"""
     valid = [p for p in intonations if p and p > 30]  # 유효 피치만
+    n = len(valid)
     if len(valid) < 3:
         return None
 
+    mean = sum(valid) / n
+    var = sum((p - mean) ** 2 for p in valid) / n
+
     return {
-        "f0_mean": round(sum(valid) / len(valid), 2),
-        "f0_std": round(
-            (sum((p - sum(valid) / len(valid)) ** 2 for p in valid) / len(valid)) ** 0.5, 2
-        ),
+        "f0_mean": round(mean, 2),
+        "f0_std": round(var**0.5, 2),
         "f0_start": round(valid[0], 2),
         "f0_end": round(valid[-1], 2),
         "f0_delta": round((valid[-1] - valid[0]) / valid[0], 3) if valid[0] > 0 else 0,
@@ -339,7 +344,6 @@ def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
 
 def _process_chunk_worker(
     file_chunk: list[Path],
-    worker_id: int,
     tmp_dir: Path,
     **fn_kwargs,
 ) -> list[dict]:
@@ -350,10 +354,9 @@ def _process_chunk_worker(
     mode = "ab" if _USING_ORJSON else "a"
     open_kwargs = {} if _USING_ORJSON else {"encoding": encoding}
 
+    pid = os.getpid()
     for split in ["train", "valid", "unknown"]:
-        local_handles[split] = open(
-            tmp_dir / f"{split}_worker_{worker_id}.jsonl", mode, **open_kwargs
-        )
+        local_handles[split] = open(tmp_dir / f"{split}_worker_{pid}.jsonl", mode, **open_kwargs)
 
     for f in file_chunk:
         try:
@@ -370,6 +373,10 @@ def _process_chunk_worker(
     for fh in local_handles.values():
         fh.close()
     return local_failed
+
+
+def _init_worker() -> None:
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 # ---------------------------------------------------------------------------
@@ -402,10 +409,10 @@ def prepare_dialect_dataset(
 
         # 태스크 균등 분할
         chunks = [files[i : i + chunk_size] for i in range(0, len(files), chunk_size)]
-        executor = ProcessPoolExecutor(max_workers=max_workers)
+        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker)
 
         futures = {
-            executor.submit(_process_chunk_worker, chunk, i, tmp_dir, **fn_kwargs): len(chunk)
+            executor.submit(_process_chunk_worker, chunk, tmp_dir, **fn_kwargs): len(chunk)
             for i, chunk in enumerate(chunks)
         }
         pbar = tqdm(total=len(files), desc="Processing Files", disable=not verbose)

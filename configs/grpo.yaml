@@ -1,0 +1,20 @@
+defaults:
+  - training: grpo
+  - logger: disabled
+  - _self_
+
+data:
+  grpo_dataset_path: ???
+  classifier_path: ???
+  base_model_path: outputs/sft
+  cls_tokenizer_name: Qwen/Qwen2.5-0.5B-Instruct
+
+experiment:
+  name: ko-dialect-grpo
+  run_name: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,0 +1,18 @@
+defaults:
+  - model: qwen2.5_0.5b
+  - training: sft
+  - logger: disabled
+  - _self_
+
+data:
+  sft_dataset_path: ???
+
+experiment:
+  name: ko-dialect-sft
+  run_name: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}

@@ -1,0 +1,30 @@
+# Backend / precision — defaults 2060-safe (hf fp16, full fine-tune, no vLLM).
+# For Colab/Ampere: backend=unsloth load_in_4bit=true apply_lora=true use_vllm=true
+backend: hf  # hf | unsloth | bnb | loftq | awq | gptq
+dtype: fp16
+load_in_4bit: false
+use_vllm: false
+apply_lora: false
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+output_dir: outputs/grpo
+num_train_epochs: 1
+per_device_train_batch_size: 1
+gradient_accumulation_steps: 16
+learning_rate: 5.0e-6
+num_generations: 4
+beta: 0.04
+max_new_tokens: 128
+max_prompt_length: 256
+fp16: true
+bf16: false
+logging_steps: 20
+save_steps: 200
+seed: 42
+# Reward set: each {name, weight}. Names resolve via rewards.REWARD_REGISTRY.
+# Add `- {name: edit, weight: 0.3}` once style+content are stable.
+rewards:
+  - {name: style, weight: 1.0}
+  - {name: content, weight: 0.5}
+use_edit_reward: false  # legacy shim: appends edit reward if `rewards` is unset

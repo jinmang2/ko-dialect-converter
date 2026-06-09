@@ -3,6 +3,87 @@
 **WIP**
 - 만족할만한 성능 나오면 배포
 
+## 실행 순서
+
+```
+# 1. 데이터 빌드 (raw Arrow → SFT/GRPO/분류기 Arrow)
+python scripts/stage0_build_datasets.py outputs/dialect_raw_new
+
+# 2. SFT
+python scripts/stage1_sft.py outputs/datasets/sft
+
+# 3. 분류기 학습
+python scripts/stage2_train_classifier.py outputs/datasets/classifier
+
+# 4. GRPO
+python scripts/stage3_grpo.py outputs/datasets/grpo outputs/classifier
+
+# 5. 평가
+python scripts/evaluate.py outputs/grpo outputs/dialect_raw_new outputs/classifier
+
+# 6. GGUF 변환 & 서빙
+python scripts/export.. --lora outputs/grpo--out outputs/merged
+python scripts/exportuts/merged
+python scripts/export_gguf.py quantize --input outputs/gguf/model_f16.gguf
+python scripts/exportoutputs/gguf/model_Q4_K_M.gguf
+```
+
+```
+# 기본 (tracking 없음)
+python scripts/stage1_sft.py data.sft_dataset_path=outputs/datasets/sft
+
+# Wandb로 실험 preset 사용
+python scripts/stage1_sft.py +experiment=sft_baseline data.sft_dataset_path=outputs/datasets/sft
+
+# CLI로 직접 MLflow 선택 + 실험명 지정
+python scripts/stage1_sft.py logger=mlflow experiment.name=my-exp experiment.run_name=lora-r32 training.lora_r=32 data.sft_dataset_path=...
+
+# 하이퍼파라미터 즉석 오버라이드 (Hydra sweeper와 연동 가능)
+python scripts/stage1_sft.py logger=wandb training.learning_rate=1e-4 training.lora_r=32 data.sft_dataset_path=...
+
+● Ran 3 stop hooks
+  ⎿  Stop hook error: [AUTOPILOT - Phase: unspecified] Autopilot not complete. Continue working. When all phases are complete, run /oh-my-claudecode:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.
+
+Phase 3 QA는 완료 (19 tests passed, ruff clean). Phase 4 Validation을 병렬로 실행합니다.
+
+● 2 background agents launched (↓ to manage)
+oh-my-claudecode:architect (Architect validation of Hydra+MLflow+Wandb integration)
+oh-my-claudecode:code-reviewer (Code quality review of tracking integration)
+
+
+# 기본 (style + content, 논문 그대로)
+python scripts/stage3_grpo.py \
+  data.grpo_dataset_path=outputs/datasets/grpo \
+  data.classifier_path=outputs/classifier \
+  logger=wandb
+
+# r_edit 활성화 (모델이 복사만 할 때)
+python scripts/stage3_grpo.py \
+  training.use_edit_reward=true \
+  training.reward_weights=[1.0,0.5,0.3] \
+  data.grpo_dataset_path=... data.classifier_path=...
+```
+```
+
+python scripts/stage1_sft.py \
+  logger=wandb \
+  experiment.run_name=sft-qwen-v1 \
+  data.sft_dataset_path=outputs/datasets/sft
+
+
+python scripts/stage1_sft.py \
+  data.sft_dataset_path=outputs/datasets/sft \
+  training.num_train_samples=300 \
+  training.num_eval_samples=200 \
+  training.num_train_epochs=1 \
+  training.eval_strategy=steps \
+  training.eval_steps=50 \
+  training.save_steps=50 \
+  training.logging_steps=10 \
+  'training.output_dir=outputs/sft_speedrun'
+
+```
+
 ## Data preparing
 
 - First, download the file below from [aihub](https://aihub.or.kr/aihub-data/natural-language/about) and set it up as follows.

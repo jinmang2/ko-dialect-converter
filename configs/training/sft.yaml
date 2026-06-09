@@ -1,0 +1,30 @@
+# Backend / precision — defaults are RTX 2060 (Turing, fp16-only) safe.
+# backend: unsloth | bnb | hf | loftq | awq | gptq | qat
+backend: unsloth
+dtype: fp16  # fp16 | bf16 (Ampere+) | fp32
+# Data shaping / loss masking (see data/template.py + dataset.output_mode)
+template_name: default        # registered chat template
+output_mode: text             # text (pre-rendered) | structured (render at train time)
+loss_on: all                  # all | completion | assistant  (needs output_mode=structured)
+packing: true
+save_merged: true             # write merged 16-bit so stage3 GRPO loads trained weights
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+output_dir: outputs/sft
+num_train_epochs: 2
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 8
+learning_rate: 2.0e-4
+warmup_ratio: 0.05
+lr_scheduler_type: cosine
+save_steps: 500
+logging_steps: 50
+eval_strategy: steps
+eval_steps: 500
+fp16: true
+bf16: false
+dataloader_num_workers: 0
+seed: 42
+num_train_samples: 150000
+num_eval_samples: null

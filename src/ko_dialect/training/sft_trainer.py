@@ -1,0 +1,250 @@
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
+
+import torch
+
+from ko_dialect.data.template import get_template
+from ko_dialect.models.loading import (
+    DEFAULT_LORA_TARGET_MODULES,
+    DEFAULT_MODEL,
+    BackendConfig,
+    load_backbone,
+    save_merged_16bit,
+)
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SFTConfig:
+    model_name: str = DEFAULT_MODEL
+    max_seq_length: int = 256
+    # Backend / precision (RTX 2060-safe defaults; flip for Colab)
+    backend: str = "unsloth"  # unsloth | bnb | hf | loftq | awq | gptq | qat
+    dtype: str = "fp16"  # fp16 | bf16 | fp32
+    load_in_4bit: bool = True
+    quantized_model_path: str | None = None  # awq/gptq backends
+    # LoRA
+    lora_r: int = 16
+    lora_alpha: int = 32
+    lora_dropout: float = 0.05
+    lora_target_modules: list[str] = field(
+        default_factory=lambda: list(DEFAULT_LORA_TARGET_MODULES)
+    )
+    # Data / loss shaping
+    template_name: str = "default"
+    output_mode: str = "text"  # "text" (pre-rendered) | "structured" (render at train time)
+    loss_on: str = "all"  # "all" | "completion" | "assistant" (structured mode only)
+    packing: bool = True
+    # Trainer
+    output_dir: str = "outputs/sft"
+    num_train_epochs: int = 3
+    per_device_train_batch_size: int = 1
+    gradient_accumulation_steps: int = 16
+    learning_rate: float = 2e-4
+    warmup_ratio: float = 0.05
+    lr_scheduler_type: str = "cosine"
+    save_steps: int = 500
+    logging_steps: int = 50
+    fp16: bool = True
+    bf16: bool = False  # RTX 2060 (Turing SM 7.5) has no native BF16
+    dataloader_num_workers: int = 0
+    seed: int = 42
+    num_train_samples: int | None = None
+    num_eval_samples: int | None = None
+    report_to: list[str] = field(default_factory=list)
+    eval_strategy: str = "epoch"  # "no" | "steps" | "epoch"
+    eval_steps: int = 500
+    save_merged: bool = True  # also save full 16-bit weights so GRPO can load directly
+
+    def to_backend_config(self) -> BackendConfig:
+        return BackendConfig(
+            backend=self.backend,
+            model_name=self.model_name,
+            max_seq_length=self.max_seq_length,
+            dtype=self.dtype,
+            load_in_4bit=self.load_in_4bit,
+            quantized_model_path=self.quantized_model_path,
+            apply_lora=True,
+            lora_r=self.lora_r,
+            lora_alpha=self.lora_alpha,
+            lora_dropout=self.lora_dropout,
+            lora_target_modules=self.lora_target_modules,
+            seed=self.seed,
+        )
+
+
+def load_model_and_tokenizer(cfg: SFTConfig):
+    """Load the SFT backbone via the pluggable backend factory."""
+    return load_backbone(cfg.to_backend_config())
+
+
+def _preprocess_logits_for_metrics(logits, labels):
+    """Reduce (B, T, vocab) → (B, T, 2) to avoid OOM during eval.
+
+    Channel 0: argmax token id (float)
+    Channel 1: per-position Shannon entropy
+    """
+    probs = torch.softmax(logits.float(), dim=-1)
+    argmax = logits.argmax(dim=-1).float()
+    entropy = -(probs * torch.log(probs + 1e-12)).sum(dim=-1)
+    return torch.stack([argmax, entropy], dim=-1)
+
+
+def _compute_metrics(eval_pred):
+    """Token-level accuracy and mean entropy on supervised positions (labels != -100).
+
+    With ``loss_on="all"`` every non-pad position is supervised; with completion/
+    assistant masking the prompt positions are -100 and excluded here.
+    """
+    import numpy as np
+
+    preds, labels = eval_pred  # preds: (N, T, 2), labels: (N, T)
+    mask = labels != -100
+    argmax = np.round(preds[..., 0]).astype(np.int64)
+    entropy = preds[..., 1]
+    accuracy = float((argmax[mask] == labels[mask]).mean())
+    mean_entropy = float(entropy[mask].mean())
+    return {"token_accuracy": accuracy, "mean_entropy": mean_entropy}
+
+
+def _render_structured(dataset, tokenizer, template, loss_on: str):
+    """Materialise structured rows (source/target/do/direction) into the columns TRL
+    expects for the requested loss-masking strategy.
+
+    - "all"        → ``text`` (full rendered chat, supervised everywhere)
+    - "completion" → ``prompt`` + ``completion`` (TRL masks the prompt automatically)
+    - "assistant"  → ``messages`` (paired with ``assistant_only_loss=True``)
+    """
+    cols = dataset.column_names
+
+    if loss_on == "assistant":
+        def _to(ex):
+            return {
+                "messages": template.format_messages(
+                    ex["source"], ex["target"], ex["do"], ex["direction"]
+                )
+            }
+
+        return dataset.map(_to, remove_columns=cols)
+
+    if loss_on == "completion":
+        def _to(ex):
+            return {
+                "prompt": template.build_prompt(
+                    tokenizer, ex["source"], ex["do"], ex["direction"]
+                ),
+                "completion": ex["target"],
+            }
+
+        return dataset.map(_to, remove_columns=cols)
+
+    # loss_on == "all"
+    def _to(ex):
+        return {
+            "text": template.apply(
+                tokenizer, ex["source"], ex["target"], ex["do"], ex["direction"]
+            )
+        }
+
+    return dataset.map(_to, remove_columns=cols)
+
+
+def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
+    from trl import SFTConfig as TRLSFTConfig
+    from trl import SFTTrainer
+
+    # Workaround for a TRL bug: base_trainer.create_model_card references `wandb` by
+    # name without importing it, raising NameError on checkpoint save even when
+    # report_to="none". Inject the module into TRL's namespace if wandb is installed.
+    try:
+        import trl.trainer.base_trainer as _trl_base
+
+        import wandb as _wandb
+
+        if not hasattr(_trl_base, "wandb"):
+            _trl_base.wandb = _wandb
+    except ImportError:
+        pass
+
+    model, tokenizer = load_model_and_tokenizer(cfg)
+
+    # Cast any stray bf16 tensors to fp16 (Turing has no native BF16).
+    if cfg.fp16 and not cfg.bf16:
+        for param in model.parameters():
+            if param.dtype == torch.bfloat16:
+                param.data = param.data.to(torch.float16)
+
+    # Render structured datasets into the columns TRL needs for the chosen loss mode.
+    packing = cfg.packing
+    assistant_only_loss = False
+    sft_kwargs: dict = {}
+    if cfg.output_mode == "structured":
+        template = get_template(cfg.template_name)
+        train_dataset = _render_structured(train_dataset, tokenizer, template, cfg.loss_on)
+        if eval_dataset is not None:
+            eval_dataset = _render_structured(eval_dataset, tokenizer, template, cfg.loss_on)
+        if cfg.loss_on == "all":
+            sft_kwargs["dataset_text_field"] = "text"
+        elif cfg.loss_on == "assistant":
+            assistant_only_loss = True
+            packing = False  # masking is simplest/portable without packing
+        else:  # completion
+            packing = False  # completion-only loss is incompatible with packing
+    else:
+        if cfg.loss_on != "all":
+            logger.warning(
+                "loss_on=%s requires output_mode=structured; ignoring for text mode.",
+                cfg.loss_on,
+            )
+        sft_kwargs["dataset_text_field"] = "text"
+
+    training_args = TRLSFTConfig(
+        output_dir=cfg.output_dir,
+        num_train_epochs=cfg.num_train_epochs,
+        per_device_train_batch_size=cfg.per_device_train_batch_size,
+        gradient_accumulation_steps=cfg.gradient_accumulation_steps,
+        learning_rate=cfg.learning_rate,
+        warmup_ratio=cfg.warmup_ratio,
+        lr_scheduler_type=cfg.lr_scheduler_type,
+        save_steps=cfg.save_steps,
+        logging_steps=cfg.logging_steps,
+        eval_strategy=cfg.eval_strategy if eval_dataset is not None else "no",
+        eval_steps=cfg.eval_steps,
+        fp16=cfg.fp16,
+        bf16=cfg.bf16,
+        dataloader_num_workers=cfg.dataloader_num_workers,
+        max_length=cfg.max_seq_length,
+        packing=packing,
+        packing_strategy="bfd",  # Best Fit Decreasing
+        assistant_only_loss=assistant_only_loss,
+        seed=cfg.seed,
+        report_to=cfg.report_to if cfg.report_to else "none",
+        **sft_kwargs,
+    )
+
+    trainer = SFTTrainer(
+        model=model,
+        processing_class=tokenizer,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        args=training_args,
+        compute_metrics=_compute_metrics if eval_dataset is not None else None,
+        preprocess_logits_for_metrics=(
+            _preprocess_logits_for_metrics if eval_dataset is not None else None
+        ),
+    )
+    trainer.train()
+    trainer.save_model(cfg.output_dir)
+    tokenizer.save_pretrained(cfg.output_dir)
+    logger.info("SFT adapter saved to %s", cfg.output_dir)
+
+    # Write standalone 16-bit weights so stage3 GRPO loads the *trained* model, not the
+    # raw base (the historical adapter-dir loading bug).
+    if cfg.save_merged:
+        try:
+            save_merged_16bit(model, tokenizer, cfg.output_dir)
+        except Exception as exc:  # pragma: no cover - best-effort, non-fatal
+            logger.warning("Could not save merged 16-bit weights: %s", exc)

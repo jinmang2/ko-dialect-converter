@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - override /logger: wandb
+
+experiment:
+  name: ko-dialect-grpo
+  run_name: grpo-baseline-beta0.04
+
+training:
+  beta: 0.04
+  num_train_epochs: 1

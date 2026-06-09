@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - override /logger: wandb
+
+experiment:
+  name: ko-dialect-sft
+  run_name: sft-baseline-lora-r16
+
+training:
+  lora_r: 16
+  num_train_epochs: 3
+  learning_rate: 2.0e-4

@@ -153,3 +153,24 @@ dmypy.json
 cython_debug/
 
 # End of https://www.toptal.com/developers/gitignore/api/python
+
+# custom
+data/**/*
+raw_data/**/*
+notebooks/**/*
+
+# Hydra outputs
+outputs/hydra/
+
+# MLflow
+mlruns/
+
+# Wandb
+wandb/
+
+# Unsloth
+unsloth_compiled_cache/
+
+# Project
+outputs/
+.omc/

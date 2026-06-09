@@ -1,0 +1,19 @@
+defaults:
+  - training: classifier
+  - logger: disabled
+  - _self_
+
+data:
+  cls_dataset_path: ???
+  tokenizer_name: Qwen/Qwen2.5-0.5B-Instruct
+  max_length: 128
+
+experiment:
+  name: ko-dialect-classifier
+  run_name: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}

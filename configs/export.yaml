@@ -1,0 +1,10 @@
+merged_output_path: "outputs/merged"
+gguf_f16_path: "outputs/gguf/model_f16.gguf"
+gguf_q4_path: "outputs/gguf/model_Q4_K_M.gguf"
+llama_cpp_dir: "llama.cpp"
+quant_type: "Q4_K_M"
+server:
+  host: "127.0.0.1"
+  port: 8080
+  n_ctx: 2048
+  n_gpu_layers: 35
