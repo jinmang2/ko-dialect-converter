@@ -19,6 +19,64 @@ from ko_dialect.models import TextCNNForSequenceClassification
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+# Standard fp16 base for RTX 2060 (Turing, no BF16). The adapter records an
+# Unsloth 4-bit base, but the LoRA weights are architecture-compatible with the
+# plain fp16 checkpoint, which is what we want for evaluation on this GPU.
+DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
+
+_WEIGHT_MARKERS = (
+    "adapter_config.json",
+    "model.safetensors",
+    "model.safetensors.index.json",
+    "pytorch_model.bin",
+    "pytorch_model.bin.index.json",
+)
+
+
+def resolve_model_dir(model_path: str) -> str:
+    """Resolve a Trainer output dir to a concrete checkpoint.
+
+    ``outputs/sft`` holds only ``checkpoint-*`` subdirs (no weights at the top),
+    so loading it directly fails. If the given path has no weights/adapter of its
+    own, pick the highest-step ``checkpoint-*`` underneath it.
+    """
+    p = Path(model_path)
+    if any((p / marker).exists() for marker in _WEIGHT_MARKERS):
+        return str(p)
+    ckpts = sorted(
+        p.glob("checkpoint-*"), key=lambda d: int(d.name.rsplit("-", 1)[-1])
+    )
+    if ckpts:
+        logger.info("Resolved %s -> latest checkpoint %s", model_path, ckpts[-1])
+        return str(ckpts[-1])
+    return str(p)
+
+
+def load_model_and_tokenizer(model_path: str, base_model: str | None):
+    """Load a full model, or a LoRA adapter merged onto its base, plus tokenizer."""
+    resolved = resolve_model_dir(model_path)
+    if (Path(resolved) / "adapter_config.json").exists():
+        from peft import PeftModel
+
+        base = base_model or DEFAULT_BASE_MODEL
+        logger.info("Detected LoRA adapter at %s; base=%s", resolved, base)
+        tokenizer = AutoTokenizer.from_pretrained(resolved)
+        model = AutoModelForCausalLM.from_pretrained(
+            base, torch_dtype=torch.float16, device_map="auto"
+        )
+        model = PeftModel.from_pretrained(model, resolved)
+        model = model.merge_and_unload()
+    else:
+        logger.info("Loading full model from %s", resolved)
+        tokenizer = AutoTokenizer.from_pretrained(resolved)
+        model = AutoModelForCausalLM.from_pretrained(
+            resolved, torch_dtype=torch.float16, device_map="auto"
+        )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    model.eval()
+    return model, tokenizer
+
 
 @torch.no_grad()
 def generate_batched(
@@ -68,6 +126,7 @@ def main(
     raw_dataset_path: str,
     classifier_path: str,
     cls_tokenizer_name: str = "Qwen/Qwen2.5-0.5B-Instruct",
+    base_model: str | None = None,
     target_do: str = "gangwondo",
     split: str = "valid",
     n_samples: int = 500,
@@ -77,10 +136,14 @@ def main(
 ) -> None:
     """
     Args:
-        model_path: Path to the trained causal LM (SFT or GRPO output).
+        model_path: Path to the trained causal LM (SFT/GRPO output dir or a
+            specific checkpoint). A Trainer output dir holding only checkpoint-*
+            subdirs is resolved to its latest checkpoint automatically.
         raw_dataset_path: Path to original dialect Arrow dataset (for references).
         classifier_path: Path to TextCNN classifier (output of stage2).
         cls_tokenizer_name: Tokenizer matching the classifier.
+        base_model: Base model for LoRA adapters (default Qwen/Qwen2.5-0.5B-Instruct,
+            fp16). Ignored when model_path is a full (merged) model.
         target_do: Dialect to evaluate (gangwondo | gyeongsangdo).
         split: Dataset split to evaluate on.
         n_samples: Number of samples to evaluate (0 = all).
@@ -90,13 +153,7 @@ def main(
         output_file: Optional JSON file to write metric results.
     """
     logger.info("Loading generation model from %s", model_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_path)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        model_path, torch_dtype=torch.float16, device_map="auto"
-    )
-    model.eval()
+    model, tokenizer = load_model_and_tokenizer(model_path, base_model)
     device = next(model.parameters()).device
 
     cls_tokenizer = AutoTokenizer.from_pretrained(cls_tokenizer_name)
