@@ -56,6 +56,12 @@ class GRPOConfig:
     # Reward spec list: [{name: style, weight: 1.0}, {name: content, weight: 0.5}, ...].
     rewards: list[dict[str, Any]] | None = None
     use_edit_reward: bool = False  # back-compat shim: appends {edit, 0.3} if rewards unset
+    # Rescale every reward to a common [0, 1] basis before weighting, so weights (not
+    # each reward's native scale, e.g. r_style ∈ [-1, 1]) govern the mixture.
+    normalize_rewards: bool = False
+    # `length` reward (DAPO-style soft overlong penalty) tuning, relative to gold length.
+    length_max_ratio: float = 1.5
+    length_tolerance: float = 0.2
     # Must be False so extra dataset columns (do, standard, dialect, ...) reach reward_fns
     remove_unused_columns: bool = False
 
@@ -91,7 +97,14 @@ class GRPOConfig:
 def build_reward_fns(
     cfg: GRPOConfig, classifier, cls_tokenizer
 ) -> tuple[list[Callable], list[float]]:
-    """Resolve the configured reward specs into ``(reward_funcs, reward_weights)``."""
+    """Resolve the configured reward specs into ``(reward_funcs, reward_weights)``.
+
+    Reward scaling & weighting: r_style is natively [-1, 1] while r_content / r_edit /
+    r_length are [0, 1]. Since GRPO sums the *weighted* rewards before group-normalizing
+    the advantage, a wider-range reward silently dominates the mix. Set
+    ``cfg.normalize_rewards=True`` to rescale every reward onto a common [0, 1] basis
+    (via ``REWARD_OUTPUT_RANGES``) so the configured weights become the only mixing knob.
+    """
     from ko_dialect.rewards import build_reward_fns as _build
 
     return _build(
@@ -99,6 +112,9 @@ def build_reward_fns(
         classifier=classifier,
         cls_tokenizer=cls_tokenizer,
         max_length=cfg.max_seq_length,
+        normalize=cfg.normalize_rewards,
+        length_max_ratio=cfg.length_max_ratio,
+        length_tolerance=cfg.length_tolerance,
     )
 
 
@@ -109,6 +125,16 @@ def train(
     reward_weights: list[float] | None = None,
     eval_dataset=None,
 ) -> None:
+    """Run GRPO training with the resolved reward functions.
+
+    Verbosity-bias guard: GRPO/PPO maximise reward and tend to pad generations,
+    which is exploitable here (a longer output incidentally hits more gold dialect
+    words in ``r_edit``). Mitigate by adding the DAPO-style ``length`` reward to the
+    config (``- {name: length, weight: 0.2}``); it applies a soft overlong penalty
+    anchored to the gold target length. Tune via ``cfg.length_max_ratio`` /
+    ``cfg.length_tolerance``.
+    """
+
     from trl import GRPOConfig as TRLGRPOConfig
     from trl import GRPOTrainer
 

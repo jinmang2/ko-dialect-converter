@@ -21,14 +21,26 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from ._utils import rescale_to_unit
 from .content import r_content
 from .edit import r_edit
+from .length import make_length_reward
 from .style import make_style_reward
 
 # A builder receives the shared context and returns a TRL reward callable.
 RewardBuilder = Callable[..., Callable]
 
 REWARD_REGISTRY: dict[str, RewardBuilder] = {}
+
+# Native output range of each reward, used by ``normalize=True`` to rescale every
+# reward onto a common [0, 1] basis before weighting (see ``rescale_to_unit``).
+# r_style is the outlier ([-1, 1]); the rest are already unit-scaled.
+REWARD_OUTPUT_RANGES: dict[str, tuple[float, float]] = {
+    "style": (-1.0, 1.0),
+    "content": (0.0, 1.0),
+    "edit": (0.0, 1.0),
+    "length": (0.0, 1.0),
+}
 
 
 def register_reward(name: str) -> Callable[[RewardBuilder], RewardBuilder]:
@@ -58,6 +70,13 @@ def _build_edit(**_: Any):
     return r_edit
 
 
+@register_reward("length")
+def _build_length(
+    length_max_ratio: float = 1.5, length_tolerance: float = 0.2, **_: Any
+):
+    return make_length_reward(max_ratio=length_max_ratio, tolerance=length_tolerance)
+
+
 # Default reward set when config omits `rewards` (paper-faithful: style + content).
 DEFAULT_REWARDS: list[dict[str, Any]] = [
     {"name": "style", "weight": 1.0},
@@ -71,10 +90,18 @@ def build_reward_fns(
     classifier=None,
     cls_tokenizer=None,
     max_length: int = 128,
+    normalize: bool = False,
+    **builder_kwargs: Any,
 ) -> tuple[list[Callable], list[float]]:
     """Resolve a list of ``{name, weight}`` specs into ``(reward_funcs, reward_weights)``.
 
     Unknown names raise immediately with the registered set listed.
+
+    When ``normalize=True`` each reward is wrapped so its output is rescaled to a
+    common [0, 1] range (via :data:`REWARD_OUTPUT_RANGES`), so the configured weights
+    govern the mixture instead of each reward's native scale. Extra ``builder_kwargs``
+    (e.g. ``length_max_ratio``) are forwarded to every builder; builders ignore the
+    ones they don't use.
     """
     specs = reward_specs if reward_specs else DEFAULT_REWARDS
 
@@ -89,12 +116,15 @@ def build_reward_fns(
             raise ValueError(
                 f"Unknown reward {name!r}. Registered: {sorted(REWARD_REGISTRY)}."
             ) from None
-        funcs.append(
-            builder(
-                classifier=classifier,
-                cls_tokenizer=cls_tokenizer,
-                max_length=max_length,
-            )
+        fn = builder(
+            classifier=classifier,
+            cls_tokenizer=cls_tokenizer,
+            max_length=max_length,
+            **builder_kwargs,
         )
+        if normalize:
+            lo, hi = REWARD_OUTPUT_RANGES.get(name, (0.0, 1.0))
+            fn = rescale_to_unit(fn, lo, hi)
+        funcs.append(fn)
         weights.append(weight)
     return funcs, weights

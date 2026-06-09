@@ -24,7 +24,14 @@ save_steps: 200
 seed: 42
 # Reward set: each {name, weight}. Names resolve via rewards.REWARD_REGISTRY.
 # Add `- {name: edit, weight: 0.3}` once style+content are stable.
+# Add `- {name: length, weight: 0.2}` to enable the DAPO-style verbosity guard.
 rewards:
   - {name: style, weight: 1.0}
   - {name: content, weight: 0.5}
 use_edit_reward: false  # legacy shim: appends edit reward if `rewards` is unset
+# Rescale each reward to [0,1] before weighting (r_style is natively [-1,1]); makes
+# the weights above the only mixing knob. See rewards.REWARD_OUTPUT_RANGES.
+normalize_rewards: false
+# `length` reward (soft overlong penalty) tuning, relative to gold target length.
+length_max_ratio: 1.5
+length_tolerance: 0.2
