@@ -14,7 +14,7 @@ lora_dropout: 0.05
 output_dir: outputs/sft
 num_train_epochs: 2
 per_device_train_batch_size: 4
-per_device_eval_batch_size: 16   # eval has no backward pass; raise if VRAM allows
+per_device_eval_batch_size: 8   # eval has no backward pass; raise if VRAM allows
 gradient_accumulation_steps: 8
 learning_rate: 2.0e-4
 warmup_ratio: 0.05

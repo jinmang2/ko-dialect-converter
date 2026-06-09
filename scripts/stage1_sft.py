@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage 1: QLoRA SFT on Qwen/Qwen2.5-0.5B-Instruct."""
+
 from __future__ import annotations
 
 try:
@@ -40,7 +41,8 @@ def main(cfg: DictConfig) -> None:
         train_ds = train_ds.shuffle(seed=sft_cfg.seed).select(range(sft_cfg.num_train_samples))
     eval_ds = ds.get("valid")
     if eval_ds is not None and sft_cfg.num_eval_samples and len(eval_ds) > sft_cfg.num_eval_samples:
-        eval_ds = eval_ds.shuffle(seed=sft_cfg.seed).select(range(sft_cfg.num_eval_samples))
+        # eval_ds = eval_ds.shuffle(seed=sft_cfg.seed).select(range(sft_cfg.num_eval_samples))
+        eval_ds = eval_ds.select(range(sft_cfg.num_eval_samples))  # do not shuffle
 
     with setup_tracking(cfg.logger, cfg.experiment):
         logger.info("SFTConfig: %s", sft_cfg)
