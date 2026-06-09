@@ -20,6 +20,7 @@ class ClassifierTrainerConfig:
     weight_decay: float = 1e-4
     warmup_ratio: float = 0.1
     save_steps: int = 200
+    eval_steps: int = 200
     logging_steps: int = 50
     eval_strategy: str = "epoch"
     save_strategy: str = "epoch"
@@ -48,6 +49,12 @@ def train(
     eval_dataset=None,
     data_collator=None,
 ) -> None:
+    # load_best_model_at_end requires the save and eval strategies (and, for
+    # "steps", their intervals) to match. Force save to follow eval so toggling
+    # eval_strategy between "epoch"/"steps" can't raise a strategy-mismatch error.
+    save_strategy = cfg.eval_strategy if cfg.load_best_model_at_end else cfg.save_strategy
+    save_steps = cfg.eval_steps if save_strategy == "steps" else cfg.save_steps
+
     args = TrainingArguments(
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_train_epochs,
@@ -56,10 +63,11 @@ def train(
         learning_rate=cfg.learning_rate,
         weight_decay=cfg.weight_decay,
         warmup_ratio=cfg.warmup_ratio,
-        save_steps=cfg.save_steps,
+        save_steps=save_steps,
         logging_steps=cfg.logging_steps,
         eval_strategy=cfg.eval_strategy,
-        save_strategy=cfg.save_strategy,
+        eval_steps=cfg.eval_steps,
+        save_strategy=save_strategy,
         load_best_model_at_end=cfg.load_best_model_at_end,
         metric_for_best_model=cfg.metric_for_best_model,
         greater_is_better=cfg.greater_is_better,

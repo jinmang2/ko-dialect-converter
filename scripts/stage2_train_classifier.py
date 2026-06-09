@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage 2: Train TextCNN dialect classifier (3-class reward model for GRPO)."""
+
 from __future__ import annotations
 
 import logging
@@ -28,10 +29,9 @@ def main(cfg: DictConfig) -> None:
         learning_rate=cfg.training.learning_rate,
         weight_decay=cfg.training.weight_decay,
         warmup_ratio=cfg.training.warmup_ratio,
-        save_steps=cfg.training.save_steps,
         logging_steps=cfg.training.logging_steps,
         eval_strategy=cfg.training.eval_strategy,
-        save_strategy=cfg.training.save_strategy,
+        eval_steps=cfg.training.eval_steps,
         load_best_model_at_end=cfg.training.load_best_model_at_end,
         metric_for_best_model=cfg.training.metric_for_best_model,
         greater_is_better=cfg.training.greater_is_better,
