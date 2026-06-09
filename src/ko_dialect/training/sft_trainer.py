@@ -42,6 +42,9 @@ class SFTConfig:
     output_dir: str = "outputs/sft"
     num_train_epochs: int = 3
     per_device_train_batch_size: int = 1
+    # Eval has no backward pass, so it can use a larger batch than training.
+    # Was unset (HF default 8) and ran slow; expose it so it can be tuned.
+    per_device_eval_batch_size: int = 8
     gradient_accumulation_steps: int = 16
     learning_rate: float = 2e-4
     warmup_ratio: float = 0.05
@@ -205,6 +208,7 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_train_epochs,
         per_device_train_batch_size=cfg.per_device_train_batch_size,
+        per_device_eval_batch_size=cfg.per_device_eval_batch_size,
         gradient_accumulation_steps=cfg.gradient_accumulation_steps,
         learning_rate=cfg.learning_rate,
         warmup_ratio=cfg.warmup_ratio,
