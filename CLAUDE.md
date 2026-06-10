@@ -38,6 +38,13 @@ isort .
 
 # Tests (no GPU needed) — after test suite is added
 pytest tests/ -x -q -m "not gpu"
+
+# Stage-3 GRPO (RTX 2060). Wrapper sets the bnb LD_LIBRARY_PATH + env and runs stage3
+# with 2060-safe defaults (unsloth 16-bit LoRA, sft_merged + classifier_clean wired in).
+scripts/run_grpo.sh training.max_steps=200 logger=wandb   # extra args = Hydra overrides
+# Fast iteration / debugging (tiny slice, ~1 min): SMOKE_4BIT=0 SMOKE_N=64 SMOKE_STEPS=5
+python scripts/smoke_grpo.py
+# When GRPO won't run / OOMs / reward-hacks → .claude/skills/grpo-troubleshooting/SKILL.md
 ```
 
 > **Note:** `scripts/`, `configs/`, `tests/` 디렉토리는 리빌딩 세션에서 생성 예정.

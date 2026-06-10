@@ -1,37 +1,52 @@
-# Backend / precision — defaults 2060-safe (hf fp16, full fine-tune, no vLLM).
-# For Colab/Ampere: backend=unsloth load_in_4bit=true apply_lora=true use_vllm=true
-backend: hf  # hf | unsloth | bnb | loftq | awq | gptq
+# Backend / precision — 2060-safe default is unsloth 16-bit LoRA (NOT 4-bit).
+# Measured on RTX 2060 (Turing SM7.5, 6GB), trl 1.5.1, unsloth 2026.6.1:
+#   * backend=hf full fine-tune  -> "Attempting to unscale FP16 gradients" + OOM (AdamW
+#     fp32 states ~4GB exceed 6GB). Do not use on this GPU.
+#   * load_in_4bit=true (QLoRA)  -> WORKS but ~146 s/step: bnb 4-bit dequantises every
+#     matmul per generated token and Turing has no fast 4-bit kernel. Infeasible for GRPO.
+#   * load_in_4bit=false (16-bit LoRA) -> ~3.4 s/step (~44x faster), peak VRAM ~2.7GB.  <-- use this
+# For Colab/Ampere you can add use_vllm=true (needs a TRL-supported vLLM, 0.12–0.18).
+backend: unsloth  # hf | unsloth | bnb | loftq | awq | gptq
+# Positional budget for prompt + completion. Dialect prompts are short (median ~73 tok)
+# but have a thin tail to ~520; 512 covers 99.98% and stage3 filters the rare overflow.
+# Too-small a value crashes unsloth with a 4-D attention-mask size mismatch, because
+# trl 1.5.1 no longer truncates prompts (max_prompt_length was removed).
+max_seq_length: 512
 dtype: fp16
-load_in_4bit: false
-use_vllm: false
-apply_lora: false
+load_in_4bit: false  # 16-bit LoRA on Turing; flip to true only on Ampere+ w/ fast 4-bit kernels
+use_vllm: false      # vLLM 0.22 in this env is outside TRL 1.5.1's supported 0.12–0.18 range
+apply_lora: true     # train LoRA adapters only (8.8M / 512M params); base stays frozen
 lora_r: 16
 lora_alpha: 32
 lora_dropout: 0.05
 output_dir: outputs/grpo
 num_train_epochs: 1
-per_device_train_batch_size: 1
-gradient_accumulation_steps: 16
+max_steps: -1  # -1 = full epoch; set a positive cap for smoke/convergence probes
+per_device_train_batch_size: 4  # 16-bit LoRA leaves headroom; must be divisible by num_generations
+gradient_accumulation_steps: 4
 learning_rate: 5.0e-6
 num_generations: 4
 beta: 0.04
-max_new_tokens: 128
-max_prompt_length: 256
+max_new_tokens: 64  # gold targets are short; a high cap invites padding/verbosity hacking
+# NOTE: trl 1.5.1 GRPOConfig removed `max_prompt_length`; passing it raises TypeError.
+# Prompts here are short (dialect sentences), so prompt truncation is not needed.
 fp16: true
 bf16: false
 logging_steps: 20
 save_steps: 200
 seed: 42
 # Reward set: each {name, weight}. Names resolve via rewards.REWARD_REGISTRY.
-# Add `- {name: edit, weight: 0.3}` once style+content are stable.
-# Add `- {name: length, weight: 0.2}` to enable the DAPO-style verbosity guard.
+# `length` is enabled by default: the convergence probe showed completions repeatedly
+# pinned at max_new_tokens (verbosity hacking), which this DAPO-style soft overlong
+# penalty counters. Add `- {name: edit, weight: 0.3}` once style+content are stable.
 rewards:
   - {name: style, weight: 1.0}
   - {name: content, weight: 0.5}
+  - {name: length, weight: 0.2}
 use_edit_reward: false  # legacy shim: appends edit reward if `rewards` is unset
-# Rescale each reward to [0,1] before weighting (r_style is natively [-1,1]); makes
-# the weights above the only mixing knob. See rewards.REWARD_OUTPUT_RANGES.
-normalize_rewards: false
+# Rescale each reward to [0,1] before weighting (r_style is natively [-1,1]); makes the
+# weights above the only mixing knob, so style can't dominate by scale. See REWARD_OUTPUT_RANGES.
+normalize_rewards: true
 # `length` reward (soft overlong penalty) tuning, relative to gold target length.
 length_max_ratio: 1.5
 length_tolerance: 0.2

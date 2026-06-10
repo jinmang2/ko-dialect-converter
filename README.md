@@ -99,6 +99,22 @@ python scripts/stage0_build_datasets.py --raw_dataset_path outputs/dialect_raw_n
 # train with weighted loss
 python scripts/stage2_train_classifier.py data.cls_dataset_path=outputs/datasets/classifier \
     model.class_weighting=balanced
+python scripts/stage2_train_classifier.py \
+  data.cls_dataset_path=outputs/datasets/classifier \
+  logger=wandb \
+  experiment.run_name=cls-textcnn-balanced-test \
+  training.per_device_train_batch_size=128 \
+  training.per_device_eval_batch_size=256 \
+  training.eval_strategy=steps \
+  training.eval_steps=200 \
+  training.logging_steps=100 \
+  model.class_weighting=balanced
+python scripts/stage3_grpo.py \
+  data.grpo_dataset_path=outputs/datasets/grpo \
+  data.classifier_path=outputs/classifier \
+  logger=wandb \
+  data.classifier_path=outputs/classifier_clean/checkpoint-8500 \
+  data.base_model_path=outputs/sft_merged
 ```
 
 ## Data preparing

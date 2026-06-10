@@ -40,13 +40,16 @@ class GRPOConfig:
     # Trainer
     output_dir: str = "outputs/grpo"
     num_train_epochs: int = 1
+    # -1 = run full epochs; set a positive value to cap optimizer steps (smoke tests,
+    # quick reward-hacking probes). Mirrors HF TrainingArguments.max_steps semantics.
+    max_steps: int = -1
     per_device_train_batch_size: int = 1
     gradient_accumulation_steps: int = 16
     learning_rate: float = 5e-6
     num_generations: int = 4
     beta: float = 0.04
     max_new_tokens: int = 128
-    max_prompt_length: int = 256
+    # max_prompt_length: int = 256  # TypeError: GRPOConfig.__init__() got an unexpected keyword argument 'max_prompt_length'
     fp16: bool = True
     bf16: bool = False
     logging_steps: int = 20
@@ -155,13 +158,14 @@ def train(
     grpo_args = TRLGRPOConfig(
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_train_epochs,
+        max_steps=cfg.max_steps,
         per_device_train_batch_size=cfg.per_device_train_batch_size,
         gradient_accumulation_steps=cfg.gradient_accumulation_steps,
         learning_rate=cfg.learning_rate,
         num_generations=cfg.num_generations,
         beta=cfg.beta,
         max_completion_length=cfg.max_new_tokens,
-        max_prompt_length=cfg.max_prompt_length,
+        # max_prompt_length=cfg.max_prompt_length,
         use_vllm=cfg.use_vllm,
         fp16=cfg.fp16,
         bf16=cfg.bf16,
