@@ -47,7 +47,14 @@ class GRPOConfig:
     gradient_accumulation_steps: int = 16
     learning_rate: float = 5e-6
     num_generations: int = 4
-    beta: float = 0.04
+    beta: float = 0.04  # KL-to-reference weight; raise to anchor harder to the SFT policy
+    # DAPO knobs (trl 1.5.1 GRPOTrainer already defaults loss_type=dapo, token-level IS).
+    # Clip-Higher: set epsilon_high > epsilon to let the policy raise good-token prob more
+    # (prevents entropy collapse). mask_truncated: drop completions cut off at the token
+    # cap so length-truncation noise doesn't pollute the gradient.
+    epsilon: float = 0.2
+    epsilon_high: float | None = None
+    mask_truncated_completions: bool = False
     max_new_tokens: int = 128
     # max_prompt_length: int = 256  # TypeError: GRPOConfig.__init__() got an unexpected keyword argument 'max_prompt_length'
     fp16: bool = True
@@ -164,6 +171,9 @@ def train(
         learning_rate=cfg.learning_rate,
         num_generations=cfg.num_generations,
         beta=cfg.beta,
+        epsilon=cfg.epsilon,
+        epsilon_high=cfg.epsilon_high,
+        mask_truncated_completions=cfg.mask_truncated_completions,
         max_completion_length=cfg.max_new_tokens,
         # max_prompt_length=cfg.max_prompt_length,
         use_vllm=cfg.use_vllm,

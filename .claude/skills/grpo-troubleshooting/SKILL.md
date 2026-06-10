@@ -92,6 +92,39 @@ prompts are short (median ~73 tok) with a tail to ~520. Two-part fix (both appli
   max_new_tokens - 8`, removing the ~0.1% outliers that still overflow. Adjust the budget
   if you change `max_new_tokens`/`max_seq_length`.
 
+### 9. It "converges" (reward ↑) but the model gets WORSE — reward over-optimization
+The classifier is a **hackable proxy**. In the 500-step run, reward/TDR rose the whole
+time, but a checkpoint sweep on valid showed the opposite for real quality:
+
+```
+stage     tdr     chrf    bleu   eojeol
+SFT(0)   0.187   68.60   57.08   0.179   <- chrf-best is the SFT base!
+step-100 0.207   64.57   51.45   0.211
+step-300 0.227   60.88   46.68   0.229
+step-500 0.213   60.13   45.70   0.236
+```
+
+TDR climbed even **past the gold dialect's own TDR** (policy out-dialects real dialect),
+while chrF/BLEU fell monotonically — the policy exaggerates / injects wrong-region
+markers / corrupts proper nouns to please the classifier. eojeol-accuracy rising while
+chrF drops = the targeted-eojeol signal is right but the global `style` reward drags the
+whole sentence.
+
+How to detect / handle:
+- **Always evaluate with an independent metric**, not reward. Run
+  `scripts/eval_grpo_checkpoints.py --grpo_dir <dir> --target_do <do>` to print the
+  per-step TDR/chrF/BLEU/eojeol curve and pick the **chrf-best** checkpoint (often NOT
+  the last). `scripts/compare_sft_grpo.py` does SFT-vs-GRPO side-by-side with samples.
+- **Rebalance rewards** so fidelity anchors dominate the unbounded `style` push:
+  demote `style` (0.5), raise `content` (chrF, 1.0), add `edit` (eojeol-targeted, 0.5),
+  keep `length` (0.2). `normalize_rewards=true`.
+- **Raise `beta`** (KL to SFT) — e.g. 0.04 → 0.1 — to keep the policy near the faithful
+  SFT outputs (whose chrF is the ceiling).
+- DAPO knobs available in trl 1.5.1: `epsilon_high` (Clip-Higher, anti entropy-collapse),
+  `mask_truncated_completions` (drop token-cap cutoffs). `loss_type` already defaults to
+  `dapo`. Note: an in-training generation eval callback is avoided here — generating
+  while the training batch is resident OOMs the 6GB GPU; use the post-hoc sweep instead.
+
 ## Fast iteration loop
 
 `scripts/smoke_grpo.py` runs a few steps on a tiny slice. Env knobs:
