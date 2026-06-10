@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
-from transformers import Trainer, TrainingArguments
+from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,15 @@ class ClassifierTrainerConfig:
     eval_strategy: str = "epoch"
     save_strategy: str = "epoch"
     load_best_model_at_end: bool = True
-    metric_for_best_model: str = "accuracy"
+    # Select on macro-F1, not accuracy: this model is a GRPO reward, so balanced
+    # per-class separation matters more than overall accuracy (which the majority
+    # `standard` class would dominate). Mirrors the DIA-REFINE paper's headline metric.
+    metric_for_best_model: str = "f1_macro"
     greater_is_better: bool = True
+    # Stop when the selection metric stops improving for this many evals. Makes runs
+    # self-terminating (the previous run was killed at step 1800 / epoch 0.27 by hand)
+    # and guards against overtraining. None disables.
+    early_stopping_patience: int | None = 5
     fp16: bool = True
     bf16: bool = False
     seed: int = 42
@@ -105,6 +112,12 @@ def train(
         report_to=cfg.report_to if cfg.report_to else "none",
     )
 
+    callbacks = []
+    if cfg.early_stopping_patience is not None and eval_dataset is not None:
+        callbacks.append(
+            EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience)
+        )
+
     trainer = Trainer(
         model=model,
         args=args,
@@ -112,6 +125,7 @@ def train(
         eval_dataset=eval_dataset,
         data_collator=data_collator,
         compute_metrics=_compute_metrics,
+        callbacks=callbacks,
     )
     trainer.train()
     trainer.save_model(cfg.output_dir)

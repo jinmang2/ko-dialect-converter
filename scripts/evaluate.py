@@ -13,7 +13,7 @@ from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ko_dialect.data import ChatTemplate
-from ko_dialect.evaluation import evaluate_all
+from ko_dialect.evaluation import evaluate_all, resolve_best_checkpoint
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -24,37 +24,9 @@ logger = logging.getLogger(__name__)
 # plain fp16 checkpoint, which is what we want for evaluation on this GPU.
 DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
-_WEIGHT_MARKERS = (
-    "adapter_config.json",
-    "model.safetensors",
-    "model.safetensors.index.json",
-    "pytorch_model.bin",
-    "pytorch_model.bin.index.json",
-)
-
-
-def resolve_model_dir(model_path: str) -> str:
-    """Resolve a Trainer output dir to a concrete checkpoint.
-
-    ``outputs/sft`` holds only ``checkpoint-*`` subdirs (no weights at the top),
-    so loading it directly fails. If the given path has no weights/adapter of its
-    own, pick the highest-step ``checkpoint-*`` underneath it.
-    """
-    p = Path(model_path)
-    if any((p / marker).exists() for marker in _WEIGHT_MARKERS):
-        return str(p)
-    ckpts = sorted(
-        p.glob("checkpoint-*"), key=lambda d: int(d.name.rsplit("-", 1)[-1])
-    )
-    if ckpts:
-        logger.info("Resolved %s -> latest checkpoint %s", model_path, ckpts[-1])
-        return str(ckpts[-1])
-    return str(p)
-
-
 def load_model_and_tokenizer(model_path: str, base_model: str | None):
     """Load a full model, or a LoRA adapter merged onto its base, plus tokenizer."""
-    resolved = resolve_model_dir(model_path)
+    resolved = resolve_best_checkpoint(model_path)
     if (Path(resolved) / "adapter_config.json").exists():
         from peft import PeftModel
 

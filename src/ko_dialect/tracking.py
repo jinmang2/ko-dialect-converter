@@ -36,7 +36,13 @@ def setup_tracking(logger_cfg: DictConfig, experiment_cfg: DictConfig):
         try:
             yield
         finally:
-            for _key in ("WANDB_PROJECT", "WANDB_ENTITY", "WANDB_NAME", "WANDB_TAGS", "WANDB_NOTES"):
+            for _key in (
+                "WANDB_PROJECT",
+                "WANDB_ENTITY",
+                "WANDB_NAME",
+                "WANDB_TAGS",
+                "WANDB_NOTES",
+            ):
                 os.environ.pop(_key, None)
 
     else:

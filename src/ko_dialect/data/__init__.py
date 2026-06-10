@@ -5,6 +5,7 @@ from .dataset import (
     build_sft_dataset,
     load_dialect_dataset,
 )
+from .filtering import carries_dialect_marker, norm_levenshtein
 from .template import (
     TEMPLATE_REGISTRY,
     ChatTemplate,
@@ -22,4 +23,6 @@ __all__ = [
     "build_grpo_dataset",
     "build_classification_dataset",
     "ClassifierCollator",
+    "norm_levenshtein",
+    "carries_dialect_marker",
 ]

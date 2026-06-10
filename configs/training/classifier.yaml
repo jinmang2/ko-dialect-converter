@@ -11,8 +11,13 @@ logging_steps: 50
 eval_strategy: epoch
 eval_steps: 100
 load_best_model_at_end: true
-metric_for_best_model: accuracy
+# Select on macro-F1 (balanced separation for the reward model), not accuracy which
+# the majority `standard` class dominates.
+metric_for_best_model: f1_macro
 greater_is_better: true
+# Self-terminate when macro-F1 plateaus for N evals (prevents both the manual-kill
+# undertraining we saw and overtraining). null disables.
+early_stopping_patience: 5
 fp16: true
 bf16: false
 seed: 42

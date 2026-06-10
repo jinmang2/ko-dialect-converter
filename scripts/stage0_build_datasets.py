@@ -28,6 +28,9 @@ def main(
     template_name: str = "default",
     output_mode: str = "text",
     cls_filter_identical: bool = True,
+    cls_min_norm_levenshtein: float | None = 0.1,
+    cls_denoise_standard: bool = True,
+    cls_drop_collisions: bool = True,
     cls_max_per_label: int | None = None,
     cls_standard_cap_ratio: float | None = None,
     seed: int = 42,
@@ -43,6 +46,13 @@ def main(
             the template/loss-mask can be swapped at train time without rebuilding).
         cls_filter_identical: Drop the dialect copy when standard == dialect (no markers).
             Leave True — disabling reintroduces ~20% contradictory labels.
+        cls_min_norm_levenshtein: Admit a dialect sample only when normalized char-level
+            Levenshtein(standard, dialect) >= this (DIA-REFINE uses 0.1). Removes
+            near-standard rows that teach the reward to credit source-copying. None
+            disables. Applied to all splits.
+        cls_denoise_standard: Drop label-0 standard sentences carrying high-precision
+            dialect endings (AI-Hub transcription noise).
+        cls_drop_collisions: Drop any text that appears under more than one label.
         cls_max_per_label: Hard cap on rows per classifier label (None = no cap).
         cls_standard_cap_ratio: Cap the standard class to this multiple of the largest
             dialect class, e.g. 2.0 (None = no cap). Train split only.
@@ -80,6 +90,9 @@ def main(
     cls_ds = build_classification_dataset(
         dataset,
         filter_identical=cls_filter_identical,
+        min_norm_levenshtein=cls_min_norm_levenshtein,
+        denoise_standard=cls_denoise_standard,
+        drop_collisions=cls_drop_collisions,
         max_per_label=cls_max_per_label,
         standard_cap_ratio=cls_standard_cap_ratio,
         seed=seed,

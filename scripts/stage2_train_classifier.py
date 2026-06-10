@@ -39,6 +39,7 @@ def main(cfg: DictConfig) -> None:
         load_best_model_at_end=cfg.training.load_best_model_at_end,
         metric_for_best_model=cfg.training.metric_for_best_model,
         greater_is_better=cfg.training.greater_is_better,
+        early_stopping_patience=cfg.training.get("early_stopping_patience", 5),
         fp16=cfg.training.fp16,
         bf16=cfg.training.bf16,
         seed=cfg.training.seed,

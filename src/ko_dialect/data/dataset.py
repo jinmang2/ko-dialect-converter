@@ -8,6 +8,7 @@ from typing import Any
 
 from datasets import Dataset, DatasetDict, load_from_disk
 
+from .filtering import carries_dialect_marker, norm_levenshtein
 from .template import ChatTemplate, Direction
 
 logger = logging.getLogger(__name__)
@@ -172,32 +173,57 @@ def _downsample_rows(
     return out
 
 
+def _drop_label_collisions(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+    """Remove every text that appears under more than one label.
+
+    Same surface string carrying two labels is an unlearnable contradiction and
+    directly poisons the ``P(dialect) - P(standard)`` reward. Both occurrences are
+    dropped (we cannot know which label is correct).
+    """
+    labels_per_text: dict[str, set[int]] = defaultdict(set)
+    for r in rows:
+        labels_per_text[r["text"]].add(r["label"])
+    conflicted = {t for t, labels in labels_per_text.items() if len(labels) > 1}
+    kept = [r for r in rows if r["text"] not in conflicted]
+    return kept, len(rows) - len(kept)
+
+
 def build_classification_dataset(
     dataset: DatasetDict | Dataset,
     filter_identical: bool = True,
+    min_norm_levenshtein: float | None = 0.1,
+    denoise_standard: bool = True,
+    drop_collisions: bool = True,
     max_per_label: int | None = None,
     standard_cap_ratio: float | None = None,
     downsample_splits: tuple[str, ...] = ("train",),
     seed: int = 42,
 ) -> DatasetDict:
-    """Build 3-class classification dataset.
+    """Build 3-class classification dataset (a GRPO reward model).
 
     Labels: standard=0, gangwondo=1, gyeongsangdo=2.
 
-    The ``standard`` sentence of each row is emitted as label 0. The ``dialect``
-    sentence is emitted as its regional label *only when it actually differs from
-    the standard form*. When ``standard == dialect`` (``is_identical``) the
-    utterance carries no dialectal markers, so emitting it under a dialect label
-    would make the same surface string carry two labels — an unlearnable
-    contradiction that also poisons the GRPO style reward (which scores
-    ``P(dialect) - P(standard)``). ``filter_identical`` drops that dialect copy,
-    matching the SFT/GRPO builders.
+    The classifier is used as the GRPO style reward ``P(dialect) - P(standard)``, so
+    its real job is to separate a genuine dialect translation (*True Attempt*) from an
+    output that merely copies the standard source (*False Success*). Three quality
+    gates, following DIA-REFINE (Park et al., arXiv:2511.06680), keep that boundary
+    clean — applied to **every split** because the reward sees the same distribution:
+
+    - ``filter_identical`` — drop the dialect copy when ``standard == dialect``.
+    - ``min_norm_levenshtein`` — admit a dialect sample only when the normalized
+      char-level Levenshtein distance to its standard form is ``>=`` this threshold
+      (paper uses ``0.1``, "ensuring form-level divergence"). This removes the
+      near-standard dialect rows that would teach the reward to credit source-copying.
+      ``None`` disables.
+    - ``denoise_standard`` — drop label-0 ``standard`` sentences that carry
+      high-precision dialect endings (AI-Hub transcription noise; see
+      :func:`carries_dialect_marker`), which otherwise blur the standard boundary.
+    - ``drop_collisions`` — drop any text appearing under more than one label.
 
     Class imbalance (standard dominates) is controllable via ``max_per_label`` and
     ``standard_cap_ratio`` (see :func:`_downsample_rows`). Downsampling is applied
     only to splits in ``downsample_splits`` (default: ``train`` only, so the valid
-    split keeps the true label distribution for honest evaluation). Pair this with
-    class-weighted loss on the model side for the strongest balance.
+    split keeps the true post-filter label distribution for honest evaluation).
     """
     if isinstance(dataset, Dataset):
         dataset = DatasetDict({"train": dataset})
@@ -205,19 +231,33 @@ def build_classification_dataset(
     result: dict[str, Dataset] = {}
     for split_name, split_ds in dataset.items():
         rows: list[dict[str, Any]] = []
-        n_skipped = 0
+        n_identical = n_near = n_polluted = 0
         for sample in split_ds:
             do = sample["do"]
-            rows.append({"text": sample["standard"], "label": DIALECT_LABELS["standard"]})
+            std_text = sample["standard"]
+            if denoise_standard and carries_dialect_marker(std_text):
+                n_polluted += 1
+            else:
+                rows.append({"text": std_text, "label": DIALECT_LABELS["standard"]})
             if do in SUPPORTED_DO:
                 if filter_identical and sample.get(
-                    "is_identical", sample["standard"] == sample["dialect"]
+                    "is_identical", std_text == sample["dialect"]
                 ):
-                    n_skipped += 1
+                    n_identical += 1
+                    continue
+                if (
+                    min_norm_levenshtein is not None
+                    and norm_levenshtein(std_text, sample["dialect"]) < min_norm_levenshtein
+                ):
+                    n_near += 1
                     continue
                 rows.append({"text": sample["dialect"], "label": DIALECT_LABELS[do]})
 
         n_built = len(rows)
+        n_collisions = 0
+        if drop_collisions:
+            rows, n_collisions = _drop_label_collisions(rows)
+
         if split_name in downsample_splits and (
             max_per_label is not None or standard_cap_ratio is not None
         ):
@@ -225,13 +265,18 @@ def build_classification_dataset(
 
         result[split_name] = Dataset.from_list(rows)
         logger.info(
-            "[%s] %d classification examples (built %d, skipped %d identical, "
-            "downsampled %d)",
+            "[%s] %d classification examples (built %d | dropped: %d identical, "
+            "%d near-standard(<%.2f nLev), %d polluted-standard, %d collisions, "
+            "%d downsampled)",
             split_name,
             len(rows),
             n_built,
-            n_skipped,
-            n_built - len(rows),
+            n_identical,
+            n_near,
+            min_norm_levenshtein or 0.0,
+            n_polluted,
+            n_collisions,
+            n_built - n_collisions - len(rows),
         )
 
     return DatasetDict(result)
