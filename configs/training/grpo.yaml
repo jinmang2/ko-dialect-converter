@@ -41,6 +41,10 @@ max_new_tokens: 64  # gold targets are short; a high cap invites padding/verbosi
 # Prompts here are short (dialect sentences), so prompt truncation is not needed.
 fp16: true
 bf16: false
+# Reward aggregation: "weighted" (Arm0 control, TRL sum-then-normalize) | "mo_grpo"
+# (Arm1, per-objective z-norm then sum, arXiv:2509.22047) | "hm" (harmonic-mean floor).
+# Must be present here so Hydra (struct mode) allows experiment/CLI overrides.
+aggregation: weighted
 logging_steps: 20
 save_steps: 200
 seed: 42

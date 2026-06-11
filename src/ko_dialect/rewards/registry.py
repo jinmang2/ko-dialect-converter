@@ -22,8 +22,9 @@ from collections.abc import Callable
 from typing import Any
 
 from ._utils import rescale_to_unit
-from .content import r_content
-from .edit import r_edit
+from .content import r_content, r_copy_margin
+from .edit import r_edit, r_edit_precision, r_edit_recall
+from .fluency import make_fluency_reward
 from .length import make_length_reward
 from .style import make_style_reward
 
@@ -39,6 +40,10 @@ REWARD_OUTPUT_RANGES: dict[str, tuple[float, float]] = {
     "style": (-1.0, 1.0),
     "content": (0.0, 1.0),
     "edit": (0.0, 1.0),
+    "edit_precision": (0.0, 1.0),
+    "edit_recall": (0.0, 1.0),
+    "copy_margin": (0.0, 1.0),
+    "fluency": (0.0, 1.0),
     "length": (0.0, 1.0),
 }
 
@@ -68,6 +73,39 @@ def _build_content(**_: Any):
 @register_reward("edit")
 def _build_edit(**_: Any):
     return r_edit
+
+
+@register_reward("edit_precision")
+def _build_edit_precision(**_: Any):
+    return r_edit_precision
+
+
+@register_reward("edit_recall")
+def _build_edit_recall(**_: Any):
+    return r_edit_recall
+
+
+@register_reward("copy_margin")
+def _build_copy_margin(**_: Any):
+    return r_copy_margin
+
+
+@register_reward("fluency")
+def _build_fluency(
+    ref_model=None,
+    ref_tokenizer=None,
+    max_length: int = 128,
+    fluency_scale: float = 4.0,
+    **_: Any,
+):
+    if ref_model is None or ref_tokenizer is None:
+        raise ValueError(
+            "reward 'fluency' requires a frozen reference LM (ref_model) + its "
+            "tokenizer (ref_tokenizer); reuse the GRPO base model handle."
+        )
+    return make_fluency_reward(
+        ref_model, ref_tokenizer, max_length=max_length, scale=fluency_scale
+    )
 
 
 @register_reward("length")

@@ -63,6 +63,16 @@ class GRPOConfig:
     save_steps: int = 200
     seed: int = 42
     report_to: list[str] = field(default_factory=list)
+    # How multiple reward functions become the scalar advantage:
+    #   "weighted"  — Arm 0 control. TRL's default sum-then-normalize (weighted sum of
+    #                 rewards, then one group-normalization). Uses GRPOTrainer.
+    #   "mo_grpo"   — Arm 1. MO-GRPO (arXiv:2509.22047): per-objective z-normalize within
+    #                 the prompt group, THEN sum. Uses MOGRPOTrainer. Removes high-variance-
+    #                 axis domination (the style-axis reward-hacking we saw).
+    #   "hm"        — fallback. Collapse the axes into ONE joint weighted-harmonic-mean
+    #                 reward (floor aggregation: a dead axis sinks the whole score) and
+    #                 pass it to a plain GRPOTrainer as a single reward_func.
+    aggregation: str = "weighted"
     # Reward spec list: [{name: style, weight: 1.0}, {name: content, weight: 0.5}, ...].
     rewards: list[dict[str, Any]] | None = None
     use_edit_reward: bool = False  # back-compat shim: appends {edit, 0.3} if rewards unset
@@ -128,6 +138,48 @@ def build_reward_fns(
     )
 
 
+def build_joint_hm_reward(
+    reward_funcs: list[Callable],
+    reward_weights: list[float],
+    *,
+    eps: float = 0.1,
+) -> Callable:
+    """Collapse per-axis rewards into ONE weighted-harmonic-mean ("floor") reward.
+
+    Fallback for when MO-GRPO is unavailable. Per plan §11-M1, the joint reward is
+
+        r = (Σ wᵢ) / Σ( wᵢ / (xᵢ + ε) ),   ε = 0.1,
+
+    over axes xᵢ that must all live on a (0, 1] basis (the caller is responsible for
+    rescaling, e.g. ``normalize_rewards=True`` maps style's [-1, 1] to [0, 1]). Unlike a
+    weighted *sum*, the harmonic mean is dominated by the smallest axis: if any single
+    objective collapses toward 0 the whole reward collapses, so the policy cannot trade
+    one axis off against another (the over-optimization failure mode). ε sets how hard
+    the floor bites (ε→0 ⇒ pure HM/min, ε large ⇒ ~weighted mean); it is the first lever
+    for AC6 group-gradient health (plan §11-M3).
+
+    The per-axis funcs share the TRL reward signature, so this returns a single
+    TRL-compatible ``fn(prompts, completions, **columns) -> list[float]`` that evaluates
+    each axis and combines row-wise. ``reward_weights`` align with ``reward_funcs``.
+    """
+    w_sum = float(sum(reward_weights))
+
+    def joint_hm(prompts, completions, **columns) -> list[float]:
+        per_axis = [fn(prompts=prompts, completions=completions, **columns)
+                    for fn in reward_funcs]
+        out: list[float] = []
+        for row in zip(*per_axis):
+            denom = sum(
+                w / (max(0.0, min(1.0, x)) + eps)
+                for w, x in zip(reward_weights, row)
+            )
+            out.append(w_sum / denom if denom > 0 else 0.0)
+        return out
+
+    joint_hm.__name__ = "joint_hm"
+    return joint_hm
+
+
 def train(
     cfg: GRPOConfig,
     train_dataset,
@@ -147,6 +199,22 @@ def train(
 
     from trl import GRPOConfig as TRLGRPOConfig
     from trl import GRPOTrainer
+
+    from ko_dialect.training.mo_grpo_trainer import MOGRPOTrainer
+
+    # "hm" fallback: collapse the per-axis rewards into a single weighted-harmonic-mean
+    # reward BEFORE constructing the trainer. TRL sums multiple reward_funcs, which is the
+    # opposite of a floor aggregation, so the HM must be a single registered reward_func
+    # (plan §11-M1). Requires the per-axis rewards on a (0, 1] basis (normalize_rewards).
+    if cfg.aggregation == "hm":
+        if not isinstance(reward_funcs, list):
+            raise ValueError(
+                "aggregation='hm' needs the list of per-axis reward_funcs to combine; "
+                "got a single callable."
+            )
+        weights = reward_weights or [1.0] * len(reward_funcs)
+        reward_funcs = build_joint_hm_reward(reward_funcs, weights)
+        reward_weights = None  # single joint reward carries no per-axis weighting
 
     # Load via the shared factory so GRPO gets the same quant/LoRA/vLLM options as SFT.
     # base_model_path now points at stage1's *merged 16-bit* output, so the trained SFT
@@ -187,7 +255,18 @@ def train(
         reward_weights=grpo_reward_weights,
     )
 
-    trainer = GRPOTrainer(
+    # MO-GRPO (Arm 1): per-objective z-normalize within the group, then sum. TRL realizes
+    # this with multi_objective_aggregation="normalize_then_sum" + scale_rewards="none";
+    # MOGRPOTrainer enforces both at construction. "weighted"/"hm" use the default
+    # sum-then-normalize path on a plain GRPOTrainer.
+    if cfg.aggregation == "mo_grpo":
+        grpo_args.multi_objective_aggregation = "normalize_then_sum"
+        grpo_args.scale_rewards = "none"
+        trainer_cls = MOGRPOTrainer
+    else:
+        trainer_cls = GRPOTrainer
+
+    trainer = trainer_cls(
         model=model,
         processing_class=tokenizer,
         reward_funcs=reward_funcs,

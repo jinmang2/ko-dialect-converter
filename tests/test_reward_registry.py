@@ -13,6 +13,49 @@ def test_registry_has_core_rewards():
     assert {"style", "content", "edit", "length"} <= set(REWARD_REGISTRY)
 
 
+def test_registry_has_new_rewards():
+    assert {
+        "edit_precision",
+        "edit_recall",
+        "copy_margin",
+        "fluency",
+    } <= set(REWARD_REGISTRY)
+
+
+def test_copy_margin_builds_and_runs():
+    funcs, weights = build_reward_fns([{"name": "copy_margin", "weight": 1.0}])
+    assert weights == [1.0]
+    out = funcs[0](
+        prompts=[""],
+        completions=["나는 학교에 간다"],
+        standard=["나는 학교에 간다"],
+        dialect=["나는 학교에 간다요"],
+        direction=["std2dia"],
+    )
+    assert 0.0 <= out[0] <= 1.0
+
+
+def test_edit_precision_recall_build_and_run():
+    eojeol_map = [{"standard": "갔다", "dialect": "갔어예"}]
+    common = dict(
+        prompts=[""],
+        completions=["나는 갔어예"],
+        standard=["나는 갔다"],
+        dialect=["나는 갔어예"],
+        dialect_eojeol_map=[eojeol_map],
+        direction=["std2dia"],
+    )
+    (prec_fn,), _ = build_reward_fns([{"name": "edit_precision", "weight": 1.0}])
+    (rec_fn,), _ = build_reward_fns([{"name": "edit_recall", "weight": 1.0}])
+    assert prec_fn(**common) == [1.0]  # 나는 preserved
+    assert rec_fn(**common) == [1.0]  # gold form 갔어예 present
+
+
+def test_fluency_requires_reference_lm():
+    with pytest.raises(ValueError, match="requires a frozen reference LM"):
+        build_reward_fns([{"name": "fluency", "weight": 0.2}])
+
+
 def test_length_reward_builds_and_runs():
     funcs, weights = build_reward_fns([{"name": "length", "weight": 0.2}])
     assert weights == [0.2]
