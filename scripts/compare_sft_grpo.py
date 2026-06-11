@@ -46,7 +46,13 @@ logger = logging.getLogger("compare")
 BASE = "outputs/sft_merged"
 GRPO_ADAPTER = "outputs/grpo_500"
 CLS = "outputs/classifier_clean"
-CLS_TOK = "Qwen/Qwen2.5-0.5B-Instruct"
+# Load the classifier tokenizer from the LOCAL classifier dir, not the Hub id.
+# Newer transformers makes a model_info() Hub call during tokenizer init (the
+# _patch_mistral_regex / is_base_mistral path); on a flaky link that raises
+# httpx.RemoteProtocolError and kills the whole comparison. The classifier_clean
+# dir ships the exact tokenizer the classifier was trained with, so this is both
+# network-free and more correct.
+CLS_TOK = CLS
 
 BUCKET_SMALL = 3
 BUCKET_MED = 8
@@ -170,6 +176,7 @@ def main(
     n: int = 200,
     max_new_tokens: int = 64,
     n_show: int = 4,
+    grpo_dir: str = GRPO_ADAPTER,
 ):
     """Compare SFT vs GRPO with stratified bucket breakdown and qualitative samples.
 
@@ -199,7 +206,7 @@ def main(
 
     logger.info("Comparing on %d %s std2dia samples", len(ds), target_do)
 
-    cls_tok = AutoTokenizer.from_pretrained(CLS_TOK)
+    cls_tok = AutoTokenizer.from_pretrained(CLS_TOK, local_files_only=True)
     if cls_tok.pad_token is None:
         cls_tok.pad_token = cls_tok.eos_token
     classifier = TextCNNForSequenceClassification.from_pretrained(CLS)
@@ -208,7 +215,7 @@ def main(
     gens: dict[str, list[str]] = {}
     rev_outs: dict[str, list[str]] = {}
 
-    for tag, adapter in [("SFT", None), ("GRPO", GRPO_ADAPTER)]:
+    for tag, adapter in [("SFT", None), ("GRPO", grpo_dir)]:
         logger.info("=== %s: loading + generating ===", tag)
         model, tok = load(adapter)
         device = next(model.parameters()).device

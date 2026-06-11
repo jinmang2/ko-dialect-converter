@@ -27,6 +27,12 @@ fi
 export CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
+# 3b) expandable_segments: on this 6GB card the default CUDA allocator fragments near the
+#     ceiling (~5.3GB) and thrashes mid-run — observed a 4.5x slowdown (9 -> 39 s/step).
+#     Expandable segments grow smoothly: it both removes the thrash AND cuts reserved VRAM
+#     (5.3GB -> ~3.0GB here), so it is strictly better on Turing/6GB. Override if needed.
+export PYTORCH_CUDA_ALLOC_CONF="${PYTORCH_CUDA_ALLOC_CONF:-expandable_segments:True}"
+
 echo "[run_grpo] python=$PYTHON"
 echo "[run_grpo] LD_LIBRARY_PATH+=$NVJITLINK_DIR"
 echo "[run_grpo] extra args: $*"
