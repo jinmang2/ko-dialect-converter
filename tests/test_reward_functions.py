@@ -5,7 +5,7 @@ from ko_dialect.rewards._utils import (
     rescale_to_unit,
     tokenize_words,
 )
-from ko_dialect.rewards.content import r_copy_margin
+from ko_dialect.rewards.content import r_copy_margin, r_overcorrection
 from ko_dialect.rewards.edit import r_edit, r_edit_precision, r_edit_recall
 from ko_dialect.rewards.length import make_length_reward
 
@@ -145,6 +145,47 @@ def test_copy_margin_high_when_moving_to_gold():
         direction=["std2dia"],
     )
     assert out[0] > 0.5
+
+
+# --- overcorrection guard (one-sided upper rail on over-stylization) -------------
+
+
+def test_overcorrection_full_on_legit_conversion():
+    # gen == gold: stays exactly within the gold's edit budget -> no overshoot -> 1.0.
+    out = r_overcorrection(
+        prompts=[""],
+        completions=["내가 학교에 가니더"],  # == gold
+        standard=["나는 학교에 간다"],
+        dialect=["내가 학교에 가니더"],
+        direction=["std2dia"],
+    )
+    assert out[0] > 0.95
+
+
+def test_overcorrection_full_on_copy():
+    # Copy is closer to source than the gold -> one-sided guard does NOT penalise it
+    # (under-conversion is copy_margin's job, not this axis').
+    out = r_overcorrection(
+        prompts=[""],
+        completions=["나는 학교에 간다"],  # == source
+        standard=["나는 학교에 간다"],
+        dialect=["내가 학교에 가니더"],
+        direction=["std2dia"],
+    )
+    assert out[0] > 0.95
+
+
+def test_overcorrection_penalises_overshoot_on_no_change_row():
+    # gold == source (no change needed) but gen invents a form not in either
+    # (the 나오고->나온구나 / 창녕->찰녕 failure) -> drifts past the gold -> penalised.
+    out = r_overcorrection(
+        prompts=[""],
+        completions=["내가 학교에 가삤다카이"],  # invented, far from source
+        standard=["나는 학교에 간다"],
+        dialect=["나는 학교에 간다"],  # gold == source
+        direction=["std2dia"],
+    )
+    assert out[0] < 0.9
 
 
 # --- length reward (DAPO-style verbosity guard) ---------------------------------

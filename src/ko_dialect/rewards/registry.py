@@ -22,10 +22,11 @@ from collections.abc import Callable
 from typing import Any
 
 from ._utils import rescale_to_unit
-from .content import r_content, r_copy_margin
+from .content import r_content, r_copy_margin, r_overcorrection
 from .edit import r_edit, r_edit_precision, r_edit_recall
 from .fluency import make_fluency_reward
 from .length import make_length_reward
+from .reconstruction import make_reconstruction_reward
 from .style import make_style_reward
 
 # A builder receives the shared context and returns a TRL reward callable.
@@ -43,6 +44,8 @@ REWARD_OUTPUT_RANGES: dict[str, tuple[float, float]] = {
     "edit_precision": (0.0, 1.0),
     "edit_recall": (0.0, 1.0),
     "copy_margin": (0.0, 1.0),
+    "overcorrection": (0.0, 1.0),
+    "reconstruction": (0.0, 1.0),
     "fluency": (0.0, 1.0),
     "length": (0.0, 1.0),
 }
@@ -90,6 +93,11 @@ def _build_copy_margin(**_: Any):
     return r_copy_margin
 
 
+@register_reward("overcorrection")
+def _build_overcorrection(**_: Any):
+    return r_overcorrection
+
+
 @register_reward("fluency")
 def _build_fluency(
     ref_model=None,
@@ -105,6 +113,28 @@ def _build_fluency(
         )
     return make_fluency_reward(
         ref_model, ref_tokenizer, max_length=max_length, scale=fluency_scale
+    )
+
+
+@register_reward("reconstruction")
+def _build_reconstruction(
+    ref_model=None,
+    ref_tokenizer=None,
+    recon_max_new_tokens: int = 64,
+    recon_batch_size: int = 8,
+    **_: Any,
+):
+    if ref_model is None or ref_tokenizer is None:
+        raise ValueError(
+            "reward 'reconstruction' requires a back-translator LM (ref_model) + its "
+            "tokenizer (ref_tokenizer); reuse the frozen SFT base handle. This reward "
+            "reverse-generates per step (6GB phase-2, smoke-gated — see plan R3)."
+        )
+    return make_reconstruction_reward(
+        ref_model,
+        ref_tokenizer,
+        max_new_tokens=recon_max_new_tokens,
+        batch_size=recon_batch_size,
     )
 
 

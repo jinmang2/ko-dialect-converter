@@ -1,0 +1,37 @@
+# @package _global_
+# Arm 2: Arm1 (MO-GRPO) + the overcorrection guard (r_overcorrection).
+# Arm1's qualitative gate exposed a residual failure on edit-distance ≤ 1 Gangwon rows
+# (gold ≈ source): the policy invents dialect forms in neither source nor gold
+# (나오고→나온구나, 요새→오새), driven by the unbounded r_style pull that r_copy_margin
+# does not cap once gen has reached the gold. r_overcorrection adds the missing upper
+# rail — it penalizes drifting *farther from source than the gold does* (one-sided, so it
+# never punishes legitimate conversion or a copy). See content.py::r_overcorrection and
+# .omc/plans/ralplan-grpo-rewards.md Arm1 follow-up. Compare head-to-head with Arm1
+# (outputs/grpo_arm1) via the proxy-independent gate (recon_bleu + qualitative AC4),
+# specifically checking the small/edit_dist≤1 bucket where overcorrection lived.
+defaults:
+  - override /logger: wandb
+
+experiment:
+  name: ko-dialect-grpo
+  run_name: grpo-arm2-overcorrect
+
+training:
+  aggregation: mo_grpo
+  beta: 0.1
+  num_train_epochs: 1
+  # 6GB-safe batch, identical to Arm1 for a like-for-like comparison.
+  num_generations: 4
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  output_dir: outputs/grpo_arm2
+  # Arm1 axes + overcorrection guard. style stays demoted (0.5); overcorrection at 0.5
+  # directly opposes style's over-dialectify pull. copy_margin (approach gold) +
+  # overcorrection (don't overshoot) form the two-sided content anchor.
+  rewards:
+    - {name: style, weight: 0.5}
+    - {name: copy_margin, weight: 1.0}
+    - {name: edit_precision, weight: 0.5}
+    - {name: edit_recall, weight: 0.5}
+    - {name: overcorrection, weight: 0.5}
+  normalize_rewards: true

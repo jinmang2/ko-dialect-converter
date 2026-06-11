@@ -1,4 +1,4 @@
-from .content import r_content, r_copy_margin
+from .content import r_content, r_copy_margin, r_overcorrection
 from .edit import r_edit, r_edit_precision, r_edit_recall
 from .fluency import make_fluency_reward
 from .length import make_length_reward
@@ -22,6 +22,7 @@ __all__ = [
     "make_fluency_reward",
     "r_content",
     "r_copy_margin",
+    "r_overcorrection",
     "r_edit",
     "r_edit_precision",
     "r_edit_recall",

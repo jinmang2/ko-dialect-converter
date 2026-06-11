@@ -18,8 +18,28 @@ def test_registry_has_new_rewards():
         "edit_precision",
         "edit_recall",
         "copy_margin",
+        "overcorrection",
+        "reconstruction",
         "fluency",
     } <= set(REWARD_REGISTRY)
+
+
+def test_overcorrection_builds_and_runs():
+    (fn,), weights = build_reward_fns([{"name": "overcorrection", "weight": 0.5}])
+    assert weights == [0.5]
+    out = fn(
+        prompts=[""],
+        completions=["내가 학교에 가니더"],  # == gold, within budget
+        standard=["나는 학교에 간다"],
+        dialect=["내가 학교에 가니더"],
+        direction=["std2dia"],
+    )
+    assert out[0] > 0.95
+
+
+def test_reconstruction_requires_back_translator():
+    with pytest.raises(ValueError, match="requires a back-translator"):
+        build_reward_fns([{"name": "reconstruction", "weight": 1.0}])
 
 
 def test_copy_margin_builds_and_runs():
