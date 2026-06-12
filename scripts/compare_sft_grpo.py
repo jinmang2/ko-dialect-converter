@@ -27,6 +27,7 @@ copy_margin = chrF(gen, gold) − chrF(gen, source):
 Usage:
     python scripts/compare_sft_grpo.py --target_do gangwondo --n 200
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,6 +39,7 @@ from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from ko_dialect.evaluation import evaluate_all
+from ko_dialect.evaluation.grpo_runs import clamp_select_count
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -120,18 +122,20 @@ def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
                 pad_token_id=tok.pad_token_id,
             )
             new = gen[:, enc["input_ids"].shape[1] :]
-            out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
+            out.extend(
+                t.strip() for t in tok.batch_decode(new, skip_special_tokens=True)
+            )
     finally:
         tok.padding_side = prev
     return out
 
 
-def load(adapter: str | None):
-    tok = AutoTokenizer.from_pretrained(BASE)
+def load(base: str, adapter: str | None):
+    tok = AutoTokenizer.from_pretrained(base, local_files_only=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     model = AutoModelForCausalLM.from_pretrained(
-        BASE, torch_dtype=torch.float16, device_map="auto"
+        base, torch_dtype=torch.float16, device_map="auto"
     )
     if adapter:
         from peft import PeftModel
@@ -177,6 +181,10 @@ def main(
     max_new_tokens: int = 64,
     n_show: int = 4,
     grpo_dir: str = GRPO_ADAPTER,
+    base: str = BASE,
+    classifier_path: str = CLS,
+    cls_tokenizer_path: str = CLS_TOK,
+    dataset_path: str = "outputs/datasets/grpo",
 ):
     """Compare SFT vs GRPO with stratified bucket breakdown and qualitative samples.
 
@@ -186,13 +194,13 @@ def main(
         Number of qualitative samples to print *per bucket*.  The plan (§3 AC4)
         requires qualitative judgment per edit-distance × dialect stratum.
     """
-    ds = load_from_disk("outputs/datasets/grpo")["valid"]
+    ds = load_from_disk(dataset_path)["valid"]
     ds = ds.filter(
         lambda x: x["do"] == target_do
         and x["direction"] == "std2dia"
         and x["standard"] != x["dialect"]
     )
-    ds = ds.select(range(min(n, len(ds))))
+    ds = ds.select(range(clamp_select_count(len(ds), n)))
     prompts = list(ds["prompt"])
     gold = list(ds["dialect"])
     src = list(ds["standard"])
@@ -206,10 +214,10 @@ def main(
 
     logger.info("Comparing on %d %s std2dia samples", len(ds), target_do)
 
-    cls_tok = AutoTokenizer.from_pretrained(CLS_TOK, local_files_only=True)
+    cls_tok = AutoTokenizer.from_pretrained(cls_tokenizer_path, local_files_only=True)
     if cls_tok.pad_token is None:
         cls_tok.pad_token = cls_tok.eos_token
-    classifier = TextCNNForSequenceClassification.from_pretrained(CLS)
+    classifier = TextCNNForSequenceClassification.from_pretrained(classifier_path)
 
     results: dict[str, dict] = {}
     gens: dict[str, list[str]] = {}
@@ -217,7 +225,7 @@ def main(
 
     for tag, adapter in [("SFT", None), ("GRPO", grpo_dir)]:
         logger.info("=== %s: loading + generating ===", tag)
-        model, tok = load(adapter)
+        model, tok = load(base, adapter)
         device = next(model.parameters()).device
         classifier.to(device).eval()
 
@@ -261,8 +269,18 @@ def main(
     print("\n" + "=" * 84)
     print(f"METRICS — {target_do}, std2dia, n={len(ds)}  (higher = better)")
     print("=" * 84)
-    keys = ["tdr", "eojeol_accuracy", "chrf", "copy_margin", "reconstruction_bleu", "bleu", "jscore"]
-    print(f"{'metric':22s} {'SFT':>10s} {'GRPO':>10s} {'Δ(GRPO-SFT)':>14s} {'GOLD':>10s}")
+    keys = [
+        "tdr",
+        "eojeol_accuracy",
+        "chrf",
+        "copy_margin",
+        "reconstruction_bleu",
+        "bleu",
+        "jscore",
+    ]
+    print(
+        f"{'metric':22s} {'SFT':>10s} {'GRPO':>10s} {'Δ(GRPO-SFT)':>14s} {'GOLD':>10s}"
+    )
     for k in keys:
         s = results["SFT"].get(k, float("nan"))
         g = results["GRPO"].get(k, float("nan"))
@@ -295,7 +313,9 @@ def main(
             gens[tag], gold, src, emaps, target_do, classifier, cls_tok, bucket_keys
         )
         print(f"\n  [{tag}]")
-        print(f"  {'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
+        print(
+            f"  {'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}"
+        )
         for bk, br in sorted(b_res.items()):
             n_bk = bucket_keys.count(bk)
             print(

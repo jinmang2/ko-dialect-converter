@@ -28,12 +28,10 @@ References:
 Usage:
     python scripts/eval_grpo_checkpoints.py --grpo_dir outputs/grpo_500 --n 150
 """
+
 from __future__ import annotations
 
-import glob
 import logging
-import os
-import re
 from collections import defaultdict
 
 import fire
@@ -41,7 +39,7 @@ import torch
 from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from ko_dialect.evaluation import evaluate_all
+from ko_dialect.evaluation import evaluate_all, grpo_runs
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -49,7 +47,7 @@ logger = logging.getLogger("sweep")
 
 BASE = "outputs/sft_merged"
 CLS = "outputs/classifier_clean"
-CLS_TOK = "Qwen/Qwen2.5-0.5B-Instruct"
+CLS_TOK = CLS
 
 # Edit-distance thresholds for small / med / large buckets (character-level Levenshtein).
 BUCKET_SMALL = 3
@@ -93,9 +91,7 @@ def _dialect_region(do: str) -> str:
 
 def _build_dia2std_prompt(dialect_text: str) -> str:
     """Reverse prompt: dialect → standard Korean (for reconstruction-BLEU pass)."""
-    return (
-        f"다음 방언 문장을 표준어로 바꿔줘.\n방언: {dialect_text}\n표준어: "
-    )
+    return f"다음 방언 문장을 표준어로 바꿔줘.\n방언: {dialect_text}\n표준어: "
 
 
 @torch.no_grad()
@@ -119,17 +115,30 @@ def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
                 pad_token_id=tok.pad_token_id,
             )
             new = gen[:, enc["input_ids"].shape[1] :]
-            out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
+            out.extend(
+                t.strip() for t in tok.batch_decode(new, skip_special_tokens=True)
+            )
     finally:
         tok.padding_side = prev
     return out
 
 
-def eval_one(adapter, prompts, gold, src, emaps, target_do, classifier, cls_tok, model_tok):
+def eval_one(
+    base,
+    adapter,
+    prompts,
+    gold,
+    src,
+    emaps,
+    target_do,
+    classifier,
+    cls_tok,
+    model_tok,
+):
     """Load model (+ optional adapter), generate, compute all metrics including
     reconstruction-BLEU via a second reverse-generation pass."""
     model = AutoModelForCausalLM.from_pretrained(
-        BASE, torch_dtype=torch.float16, device_map="auto"
+        base, torch_dtype=torch.float16, device_map="auto"
     )
     if adapter:
         from peft import PeftModel
@@ -202,6 +211,10 @@ def main(
     target_do: str = "gangwondo",
     n: int = 150,
     select_by: str = "reconstruction_bleu",
+    base: str = BASE,
+    classifier_path: str = CLS,
+    cls_tokenizer_path: str = CLS_TOK,
+    dataset_path: str = "outputs/datasets/grpo",
 ):
     """Sweep checkpoints.  Default selection metric is reconstruction_bleu (proxy-independent).
 
@@ -209,12 +222,13 @@ def main(
       J-score overlaps with training rewards → circularity.  Use reconstruction_bleu
       (+ qualitative gate AC4) for selection; J-score is monitoring/visualisation only.
     """
-    ds = load_from_disk("outputs/datasets/grpo")["valid"]
+    ds = load_from_disk(dataset_path)["valid"]
     ds = ds.filter(
         lambda x: x["do"] == target_do
         and x["direction"] == "std2dia"
         and x["standard"] != x["dialect"]
-    ).select(range(n))
+    )
+    ds = ds.select(range(grpo_runs.clamp_select_count(len(ds), n)))
 
     prompts = list(ds["prompt"])
     gold = list(ds["dialect"])
@@ -227,46 +241,53 @@ def main(
         for row in ds
     ]
 
-    cls_tok = AutoTokenizer.from_pretrained(CLS_TOK)
+    cls_tok = AutoTokenizer.from_pretrained(cls_tokenizer_path, local_files_only=True)
     if cls_tok.pad_token is None:
         cls_tok.pad_token = cls_tok.eos_token
-    classifier = TextCNNForSequenceClassification.from_pretrained(CLS)
+    classifier = TextCNNForSequenceClassification.from_pretrained(classifier_path)
 
-    model_tok = AutoTokenizer.from_pretrained(BASE)
+    model_tok = AutoTokenizer.from_pretrained(base, local_files_only=True)
     if model_tok.pad_token is None:
         model_tok.pad_token = model_tok.eos_token
 
-    ckpts = sorted(
-        glob.glob(os.path.join(grpo_dir, "checkpoint-*")),
-        key=lambda p: int(re.search(r"checkpoint-(\d+)", p).group(1)),
-    )
-
-    def _step(p):
-        return re.search(r"checkpoint-(\d+)", p).group(1)
-
-    stages = [("SFT(0)", None)] + [("step-" + _step(c), c) for c in ckpts]
-    if os.path.exists(os.path.join(grpo_dir, "adapter_config.json")):
-        stages.append(("final", grpo_dir))
+    stages = grpo_runs.discover_grpo_stages(grpo_dir)
+    if len(stages) == 1:
+        logger.warning(
+            "No GRPO adapter checkpoints found under %s; evaluating SFT only.", grpo_dir
+        )
 
     print(f"\nSweep: {target_do} std2dia, n={len(ds)}, select_by={select_by}")
     hdr = f"{'stage':10s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'recon_b':>9s} {'bleu':>8s} {'eojeol':>8s} {'jscore':>8s}"
     print(hdr)
     rows = []
     all_outs: dict[str, list[str]] = {}
-    for tag, adapter in stages:
-        r, outs = eval_one(adapter, prompts, gold, src, emaps, target_do, classifier, cls_tok, model_tok)
-        rows.append((tag, r))
-        all_outs[tag] = outs
+    for stage in stages:
+        r, outs = eval_one(
+            base,
+            stage.adapter,
+            prompts,
+            gold,
+            src,
+            emaps,
+            target_do,
+            classifier,
+            cls_tok,
+            model_tok,
+        )
+        rows.append((stage.tag, r))
+        all_outs[stage.tag] = outs
         recon = r.get("reconstruction_bleu", float("nan"))
         print(
-            f"{tag:10s} {r['tdr']:>8.4f} {r['chrf']:>8.3f} {r['copy_margin']:>+9.3f}"
+            f"{stage.tag:10s} {r['tdr']:>8.4f} {r['chrf']:>8.3f} {r['copy_margin']:>+9.3f}"
             f" {recon:>9.3f} {r['bleu']:>8.3f} {r['eojeol_accuracy']:>8.4f}"
             f" {r.get('jscore', float('nan')):>8.4f}"
         )
 
     # --- per-bucket breakdown for the best checkpoint ---
-    best = max(rows, key=lambda tr: tr[1].get(select_by, 0) if not __import__("math").isnan(tr[1].get(select_by, float("nan"))) else 0)
-    print(f"\nBest by {select_by}: {best[0]}  ({select_by}={best[1].get(select_by, float('nan')):.3f}, tdr={best[1]['tdr']:.3f})")
+    best = grpo_runs.best_by_metric(rows, select_by)
+    print(
+        f"\nBest by {select_by}: {best[0]}  ({select_by}={best[1].get(select_by, float('nan')):.3f}, tdr={best[1]['tdr']:.3f})"
+    )
     print(
         "NOTE: J-score is MONITORING ONLY — not a selection criterion (plan §3 A4).\n"
         "      Use reconstruction_bleu + qualitative gate (AC4) for checkpoint selection."
@@ -276,7 +297,9 @@ def main(
     b_results = eval_buckets(
         all_outs[best[0]], gold, src, emaps, target_do, classifier, cls_tok, bucket_keys
     )
-    print(f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
+    print(
+        f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}"
+    )
     for bk, br in sorted(b_results.items()):
         n_bk = bucket_keys.count(bk)
         print(
@@ -287,9 +310,18 @@ def main(
     # Also print SFT buckets for comparison
     print("\n--- Per-bucket breakdown: SFT(0) ---")
     sft_b = eval_buckets(
-        all_outs["SFT(0)"], gold, src, emaps, target_do, classifier, cls_tok, bucket_keys
+        all_outs["SFT(0)"],
+        gold,
+        src,
+        emaps,
+        target_do,
+        classifier,
+        cls_tok,
+        bucket_keys,
     )
-    print(f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
+    print(
+        f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}"
+    )
     for bk, br in sorted(sft_b.items()):
         n_bk = bucket_keys.count(bk)
         print(
