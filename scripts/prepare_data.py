@@ -266,9 +266,21 @@ def _process_single_json(
                 if match_d != -1:
                     d_ptr = match_d + len(seg_dia_words)
 
-        # 운율 요약
-        prosody = summarize_intonation(sentence.get("intonations", []))
+        # 운율 요약 (sentence-level) + 어절 단위 운율 (Phase-2: F0 series sliced per segment)
+        intonations = sentence.get("intonations", [])
+        prosody = summarize_intonation(intonations)
         marker = prosody_marker(prosody)
+
+        eojeols = []
+        for seg in sentence_segments:
+            seg_dia = (seg.get("dialect") or "").strip()
+            seg_st, seg_et = seg.get("startTime"), seg.get("endTime")
+            if not (seg_dia and seg_st and seg_et):
+                continue
+            eojeols.append({"word": seg_dia, "start_s": t2s(seg_st), "end_s": t2s(seg_et)})
+        dialect_eojeol_prosody = data_prosody.eojeol_prosody_markers(
+            intonations, s_time, e_time, eojeols
+        )
 
         sentence_id = (
             f"{data.get('fileName', os.path.basename(path))}_{int(sentence.get('sentenceId', 0))}"
@@ -285,6 +297,7 @@ def _process_single_json(
                 "dialect_eojeol_map": dialect_eojeol_map,
                 "prosody": prosody,
                 "prosody_marker": marker,
+                "dialect_eojeol_prosody": dialect_eojeol_prosody,
                 "intent": get_annotation(data, sentence.get("sentenceId"), "intents"),
                 "emotion": get_annotation(data, sentence.get("sentenceId"), "emotions"),
             }

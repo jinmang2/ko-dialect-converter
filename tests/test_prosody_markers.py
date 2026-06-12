@@ -4,8 +4,11 @@ from ko_dialect.data.prosody import (
     PROSODY_MARKER_POLICY,
     PROSODY_MARKER_POLICY_V1,
     add_sentence_final_marker,
+    apply_eojeol_markers,
+    eojeol_prosody_markers,
     f0_coefficient_of_variation,
     prosody_marker,
+    slice_intonation_by_time,
     strip_markers,
 )
 
@@ -78,3 +81,43 @@ def test_v1_policy_unchanged():
     assert PROSODY_MARKER_POLICY_V1["up_threshold_delta_ratio"] == 0.15
     assert PROSODY_MARKER_POLICY_V1["down_threshold_delta_ratio"] == -0.15
     assert PROSODY_MARKER_POLICY["version"] == 2
+
+
+# --- Phase 2: per-eojeol prosody (time-sliced F0) -----------------------------
+
+
+def test_slice_intonation_by_time_maps_window_to_indices():
+    # 10 samples over [0,1]s => 10 fps; segment [0.2,0.5] -> indices [2,5)
+    series = list(range(10))
+    assert slice_intonation_by_time(series, 0.0, 1.0, 0.2, 0.5) == [2, 3, 4]
+    # out-of-range / degenerate cases
+    assert slice_intonation_by_time([], 0.0, 1.0, 0.0, 1.0) == []
+    assert slice_intonation_by_time(series, 0.0, 0.0, 0.0, 1.0) == []  # zero duration
+    assert slice_intonation_by_time(series, 0.0, 1.0, 0.6, 0.6) == []  # empty window
+
+
+def test_eojeol_prosody_markers_assigns_per_word():
+    # First half rises, second half is flat/low — distinct per-eojeol contours.
+    series = [100, 120, 140, 160] + [150, 150, 150, 150]
+    eojeols = [
+        {"word": "내가", "start_s": 0.0, "end_s": 0.5},
+        {"word": "왔다", "start_s": 0.5, "end_s": 1.0},
+    ]
+    out = eojeol_prosody_markers(series, 0.0, 1.0, eojeols)
+    assert [m["word"] for m in out] == ["내가", "왔다"]
+    assert out[0]["marker"] == "<UP>"  # rising first eojeol
+    assert all("marker" in m and "prosody" in m for m in out)
+
+
+def test_eojeol_prosody_marker_none_when_too_few_points():
+    out = eojeol_prosody_markers([200.0], 0.0, 1.0, [{"word": "음", "start_s": 0.0, "end_s": 1.0}])
+    assert out[0]["marker"] is None  # < min_valid_points
+
+
+def test_apply_eojeol_markers_inlines_markers():
+    marked = [
+        {"word": "내가", "marker": "<UP>"},
+        {"word": "왔다", "marker": None},
+        {"word": "함더", "marker": "<KEEP>"},
+    ]
+    assert apply_eojeol_markers(marked) == "내가<UP> 왔다 함더<KEEP>"

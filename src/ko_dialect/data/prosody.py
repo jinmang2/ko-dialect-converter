@@ -121,6 +121,65 @@ def prosody_marker(
     return "<KEEP>"
 
 
+def slice_intonation_by_time(
+    intonations: list[float],
+    sent_start_s: float,
+    sent_end_s: float,
+    seg_start_s: float,
+    seg_end_s: float,
+) -> list[float]:
+    """Return the F0 sub-series covering ``[seg_start_s, seg_end_s]`` within a sentence.
+
+    The AI-Hub data stores one flat F0 series per *sentence* (uniformly sampled across the
+    sentence span); word-level segments carry only ``startTime``/``endTime``. Per-eojeol F0
+    is therefore recovered by slicing the sentence series at the segment's time window —
+    the basis for per-eojeol (Phase-2) prosody markers.
+    """
+    n = len(intonations)
+    dur = sent_end_s - sent_start_s
+    if n == 0 or dur <= 0:
+        return []
+    fps = n / dur
+    i0 = max(0, int(round((seg_start_s - sent_start_s) * fps)))
+    i1 = min(n, int(round((seg_end_s - sent_start_s) * fps)))
+    return intonations[i0:i1] if i1 > i0 else []
+
+
+def eojeol_prosody_markers(
+    intonations: list[float],
+    sent_start_s: float,
+    sent_end_s: float,
+    eojeols: list[dict],
+    *,
+    version: int = PROSODY_MARKER_POLICY_VERSION,
+) -> list[dict]:
+    """Per-eojeol F0 markers for a sentence.
+
+    ``eojeols`` is a list of ``{"word": str, "start_s": float, "end_s": float}``. Returns one
+    ``{"word", "marker", "prosody"}`` per eojeol; ``marker`` is None when the eojeol's slice
+    has too few valid F0 points to summarise.
+    """
+    out: list[dict] = []
+    for ej in eojeols:
+        sub = slice_intonation_by_time(
+            intonations, sent_start_s, sent_end_s, ej["start_s"], ej["end_s"]
+        )
+        summary = summarize_intonation(sub)
+        out.append(
+            {
+                "word": ej["word"],
+                "marker": prosody_marker(summary, version=version),
+                "prosody": summary,
+            }
+        )
+    return out
+
+
+def apply_eojeol_markers(marked: list[dict]) -> str:
+    """Render per-eojeol markers as an inline-marked dialect string (``내가<UP> 최근에<KEEP>``)."""
+    return " ".join(f"{m['word']}{m['marker']}" if m.get("marker") else m["word"] for m in marked)
+
+
 def add_sentence_final_marker(text: str, marker: str | None) -> str:
     """Insert a prosody marker before sentence-final punctuation when present."""
     text = text.strip()
