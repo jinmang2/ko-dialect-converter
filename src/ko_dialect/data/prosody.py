@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 PROSODY_MARKER_POLICY_VERSION = 1
@@ -62,3 +63,19 @@ def add_sentence_final_marker(text: str, marker: str | None) -> str:
     if text[-1] in punctuation:
         return f"{text[:-1]}{marker}{text[-1]}"
     return f"{text}{marker}"
+
+
+_MARKER_RE = re.compile(
+    "|".join(re.escape(m) for m in PROSODY_MARKER_POLICY["markers"])
+)
+
+
+def strip_markers(text: str) -> str:
+    """Remove any prosody markers from generated text and tidy whitespace.
+
+    A prosody-supervised model emits markers (e.g. ``밥 뭇나<UP>?``); they must be
+    stripped before scoring against marker-free gold so the A/B compares dialect content,
+    not the marker tokens themselves.
+    """
+    cleaned = _MARKER_RE.sub("", text)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
