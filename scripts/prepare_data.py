@@ -1,20 +1,27 @@
 from __future__ import annotations
 
+import json
 import os
 import random
 import re
 import shutil
 import signal
 import time
+from collections.abc import Callable
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from contextlib import suppress
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Callable
 
 import fire
-from datasets import Dataset, DatasetDict, load_from_disk
+from datasets import Dataset, DatasetDict
 from tqdm.auto import tqdm
+
+from ko_dialect.data import prosody as data_prosody
+
+PROSODY_MARKER_POLICY = data_prosody.PROSODY_MARKER_POLICY
+prosody_marker = data_prosody.prosody_marker
+summarize_intonation = data_prosody.summarize_intonation
 
 # ---------------------------------------------------------------------------
 # 🔥 High-Performance JSON Engine Auto-Fallback Setup
@@ -60,7 +67,9 @@ class SpeechKind(StrEnum):
     UNKNOWN = auto()
 
 
-def get_json_files(data_path: os.PathLike | str, glob_pattern: str = "**/*.json") -> list[Path]:
+def get_json_files(
+    data_path: os.PathLike | str, glob_pattern: str = "**/*.json"
+) -> list[Path]:
     return list(Path(data_path).glob(glob_pattern))
 
 
@@ -75,31 +84,16 @@ def t2s(t: str) -> float:
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
-def summarize_intonation(intonations: list[float]) -> dict | None:
-    """raw F0 시계열 -> 요약 통계 (None 값/0 값 제외)"""
-    valid = [p for p in intonations if p and p > 30]  # 유효 피치만
-    n = len(valid)
-    if len(valid) < 3:
-        return None
-
-    mean = sum(valid) / n
-    var = sum((p - mean) ** 2 for p in valid) / n
-
-    return {
-        "f0_mean": round(mean, 2),
-        "f0_std": round(var**0.5, 2),
-        "f0_start": round(valid[0], 2),
-        "f0_end": round(valid[-1], 2),
-        "f0_delta": round((valid[-1] - valid[0]) / valid[0], 3) if valid[0] > 0 else 0,
-    }
-
-
 def get_annotation(data: dict, sent_id: str | None, key: str) -> str | None:
     items = data.get("annotation", {}).get(key, [])
     for it in items:
         if it.get("sentenceId") == sent_id:
             return it.get("tagType")
     return None
+
+
+def write_json_file(path: Path, payload: dict) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +145,7 @@ def _process_single_json(
 
     m = re.compile(r"_([가-힣]+도)_").search(str(path))
     region = REGION_MAP.get(m.group(1), m.group(1)) if m else "unknown"
+    split = "unknown"
     for part in path.parts:
         if part == "Training":
             split = "train"
@@ -159,6 +154,7 @@ def _process_single_json(
             split = "valid"
             break
 
+    speech_kind = SpeechKind.UNKNOWN.value
     if path.stem.startswith("st_"):
         speech_kind = SpeechKind.READ.value
     elif path.stem.startswith("say_"):
@@ -187,7 +183,9 @@ def _process_single_json(
         # 어절 단위 방언 매핑 (Double-ptr)
         s_time, e_time = t2s(sentence["startTime"]), t2s(sentence["endTime"])
         sentence_segments = [
-            segment for segment in segments if s_time <= segment["_start_seconds"] <= e_time + 0.01
+            segment
+            for segment in segments
+            if s_time <= segment["_start_seconds"] <= e_time + 0.01
         ]
         standard_words = (sentence.get("standard") or "").split()
         dialect_words = (sentence.get("dialect") or "").split()
@@ -274,10 +272,9 @@ def _process_single_json(
 
         # 운율 요약
         prosody = summarize_intonation(sentence.get("intonations", []))
+        marker = prosody_marker(prosody)
 
-        sentence_id = (
-            f"{data.get('fileName', os.path.basename(path))}_{int(sentence.get('sentenceId', 0))}"
-        )
+        sentence_id = f"{data.get('fileName', os.path.basename(path))}_{int(sentence.get('sentenceId', 0))}"
         samples.append(
             {
                 "id": sentence_id,
@@ -289,6 +286,7 @@ def _process_single_json(
                 "is_identical": standard == dialect,
                 "dialect_eojeol_map": dialect_eojeol_map,
                 "prosody": prosody,
+                "prosody_marker": marker,
                 "intent": get_annotation(data, sentence.get("sentenceId"), "intents"),
                 "emotion": get_annotation(data, sentence.get("sentenceId"), "emotions"),
             }
@@ -300,11 +298,11 @@ def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
     # Extract region, split from path string:
     #   한국어 방언 발화({REGION})/{SPLIT}/*.json
     path = Path(path)
-    _RE_REGION = re.compile(r"한국어 방언 발화\((.+?)\)")
-    _SPLIT_MAP = {"Training": "train", "Validation": "valid"}
-    m = _RE_REGION.search(str(path))
+    re_region = re.compile(r"한국어 방언 발화\((.+?)\)")
+    split_map = {"Training": "train", "Validation": "valid"}
+    m = re_region.search(str(path))
     region = REGION_MAP.get(m.group(1), m.group(1)) if m else "unknown"
-    split = _SPLIT_MAP.get(path.parent.name, path.parent.name.lower())
+    split = split_map.get(path.parent.name, path.parent.name.lower())
 
     # Construct samples
     samples = []
@@ -356,7 +354,9 @@ def _process_chunk_worker(
 
     pid = os.getpid()
     for split in ["train", "valid", "unknown"]:
-        local_handles[split] = open(tmp_dir / f"{split}_worker_{pid}.jsonl", mode, **open_kwargs)
+        local_handles[split] = open(
+            tmp_dir / f"{split}_worker_{pid}.jsonl", mode, **open_kwargs
+        )
 
     for f in file_chunk:
         try:
@@ -403,16 +403,21 @@ def prepare_dialect_dataset(
             with suppress(Exception):
                 shutil.rmtree(tmp_dir)
 
-    def _run_parallel(max_workers: int | None = None, chunk_size: int = 1000, **fn_kwargs):
+    def _run_parallel(
+        max_workers: int | None = None, chunk_size: int = 1000, **fn_kwargs
+    ):
         max_workers = max_workers or os.cpu_count() or 4
-        encoding = fn_kwargs.get("encoding", "utf-8")
 
         # 태스크 균등 분할
         chunks = [files[i : i + chunk_size] for i in range(0, len(files), chunk_size)]
-        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker)
+        executor = ProcessPoolExecutor(
+            max_workers=max_workers, initializer=_init_worker
+        )
 
         futures = {
-            executor.submit(_process_chunk_worker, chunk, tmp_dir, **fn_kwargs): len(chunk)
+            executor.submit(_process_chunk_worker, chunk, tmp_dir, **fn_kwargs): len(
+                chunk
+            )
             for i, chunk in enumerate(chunks)
         }
         pbar = tqdm(total=len(files), desc="Processing Files", disable=not verbose)
@@ -441,7 +446,9 @@ def prepare_dialect_dataset(
             failed_path = output_dir / "failed_files.json"
             with open(failed_path, "w", encoding="utf-8") as f:
                 if _USING_ORJSON:
-                    f.write(orjson.dumps(failed, option=orjson.OPT_INDENT_2).decode("utf-8"))
+                    f.write(
+                        orjson.dumps(failed, option=orjson.OPT_INDENT_2).decode("utf-8")
+                    )
                 else:
                     import json
 
@@ -463,10 +470,23 @@ def prepare_dialect_dataset(
                     wf.unlink()
 
         dataset = DatasetDict(
-            {split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl")) for split in splits_found}
+            {
+                split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl"))
+                for split in splits_found
+            }
         )
         save_path = output_dir / f"dialect_raw_{'old' if use_old_format else 'new'}"
         dataset.save_to_disk(str(save_path))
+        write_json_file(
+            save_path.with_name(f"{save_path.name}_manifest.json"),
+            {
+                "dataset": save_path.name,
+                "source_format": "old" if use_old_format else "new",
+                "prosody_marker_policy": (
+                    None if use_old_format else PROSODY_MARKER_POLICY
+                ),
+            },
+        )
 
         elapsed = time.perf_counter() - start_time
         print(f"Saved {sum(len(v) for v in dataset.values())} samples → {save_path}")
@@ -517,7 +537,7 @@ def main(
     if speedrun:
         files = random.sample(files, k=min(n_samples, len(files)))
 
-    dataset = prepare_dialect_dataset(
+    prepare_dialect_dataset(
         files,
         output_dir,
         max_workers=max_workers,

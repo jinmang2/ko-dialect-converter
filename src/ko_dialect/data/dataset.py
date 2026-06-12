@@ -9,6 +9,7 @@ from typing import Any
 from datasets import Dataset, DatasetDict, load_from_disk
 
 from .filtering import carries_dialect_marker, norm_levenshtein
+from .prosody import add_sentence_final_marker
 from .template import ChatTemplate, Direction
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ def build_sft_dataset(
     both_directions: bool = True,
     filter_identical: bool = True,
     output_mode: str = "text",
+    include_prosody: bool = False,
 ) -> DatasetDict:
     """Build SFT dataset from raw dialect DatasetDict.
 
@@ -44,9 +46,16 @@ def build_sft_dataset(
       into a ``text`` column. Fast, but changing the template means rebuilding.
     - ``"structured"``: store raw ``source,target,do,direction`` and apply the template
       *at train time*. Lets you swap templates / loss-masking without rebuilding data.
+
+    ``include_prosody`` is an opt-in experiment path. When a raw row has a
+    ``prosody_marker`` (for example ``"<UP>"``), the dialect side is rendered with
+    that marker at SFT build time: as the target for ``std2dia`` and as the source for
+    ``dia2std``. Missing markers are reported per split and fall back to plain dialect.
     """
     if output_mode not in ("text", "structured"):
-        raise ValueError(f"output_mode must be 'text' or 'structured', got {output_mode!r}.")
+        raise ValueError(
+            f"output_mode must be 'text' or 'structured', got {output_mode!r}."
+        )
     if template is None:
         template = ChatTemplate()
     if isinstance(dataset, Dataset):
@@ -59,13 +68,21 @@ def build_sft_dataset(
         split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
 
         rows: list[dict[str, Any]] = []
+        missing_prosody_markers = 0
         for sample in split_ds:
             do = sample["do"]
+            dialect_text = sample["dialect"]
+            if include_prosody:
+                marker = sample.get("prosody_marker")
+                if marker:
+                    dialect_text = add_sentence_final_marker(dialect_text, marker)
+                else:
+                    missing_prosody_markers += 1
             pairs: list[tuple[str, str, Direction]] = [
-                (sample["standard"], sample["dialect"], "std2dia"),
+                (sample["standard"], dialect_text, "std2dia"),
             ]
             if both_directions:
-                pairs.append((sample["dialect"], sample["standard"], "dia2std"))
+                pairs.append((dialect_text, sample["standard"], "dia2std"))
 
             for source, target, direction in pairs:
                 if output_mode == "structured":
@@ -81,10 +98,49 @@ def build_sft_dataset(
                     text = template.apply(tokenizer, source, target, do, direction)
                     rows.append({"text": text, "do": do, "direction": direction})
 
+        if include_prosody and missing_prosody_markers:
+            logger.warning(
+                "[%s] include_prosody=True but %d raw rows had no prosody_marker; "
+                "those rows used plain dialect text.",
+                split_name,
+                missing_prosody_markers,
+            )
+
         result[split_name] = Dataset.from_list(rows)
-        logger.info("[%s] %d SFT examples (output_mode=%s)", split_name, len(rows), output_mode)
+        logger.info(
+            "[%s] %d SFT examples (output_mode=%s, include_prosody=%s)",
+            split_name,
+            len(rows),
+            output_mode,
+            include_prosody,
+        )
 
     return DatasetDict(result)
+
+
+def prosody_marker_coverage(
+    dataset: DatasetDict | Dataset,
+    filter_identical: bool = True,
+) -> dict[str, dict[str, int | float]]:
+    """Compute prosody marker coverage under the same row filters as SFT."""
+    if isinstance(dataset, Dataset):
+        dataset = DatasetDict({"train": dataset})
+
+    coverage = {}
+    for split_name, split_ds in dataset.items():
+        if filter_identical:
+            split_ds = split_ds.filter(lambda x: not x["is_identical"])
+        split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
+
+        total = len(split_ds)
+        marked = sum(1 for sample in split_ds if sample.get("prosody_marker"))
+        coverage[split_name] = {
+            "total_rows": total,
+            "marked_rows": marked,
+            "missing_rows": total - marked,
+            "coverage_ratio": round(marked / total, 6) if total else 0.0,
+        }
+    return coverage
 
 
 def build_grpo_dataset(
@@ -173,7 +229,9 @@ def _downsample_rows(
     return out
 
 
-def _drop_label_collisions(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+def _drop_label_collisions(
+    rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], int]:
     """Remove every text that appears under more than one label.
 
     Same surface string carrying two labels is an unlearnable contradiction and
@@ -247,7 +305,8 @@ def build_classification_dataset(
                     continue
                 if (
                     min_norm_levenshtein is not None
-                    and norm_levenshtein(std_text, sample["dialect"]) < min_norm_levenshtein
+                    and norm_levenshtein(std_text, sample["dialect"])
+                    < min_norm_levenshtein
                 ):
                     n_near += 1
                     continue
