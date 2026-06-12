@@ -26,6 +26,7 @@ from transformers import AutoTokenizer
 
 from ko_dialect.data.prosody import strip_markers
 from ko_dialect.evaluation import grpo_runs
+from ko_dialect.evaluation.generation import generate_batched
 from ko_dialect.evaluation.leaderboard import RunSpec, evaluate_run
 from ko_dialect.evaluation.metric_registry import header_label
 from ko_dialect.evaluation.significance import PairedResult, paired_bootstrap, significance_marker
@@ -38,36 +39,20 @@ CLS = "outputs/classifier_clean"
 SHOW = ("reconstruction_bleu", "copy_margin", "tdr", "dfs", "chrf", "eojeol_accuracy")
 
 
-@torch.no_grad()
 def _make_generate_fn(device, *, strip: bool, batch_size=16, max_new_tokens=64):
     """Greedy generation; when ``strip`` remove prosody markers from each output."""
 
     def generate_fn(model, tok, prompts):
-        prev = tok.padding_side
-        tok.padding_side = "left"
-        out: list[str] = []
-        try:
-            for i in range(0, len(prompts), batch_size):
-                enc = tok(
-                    prompts[i : i + batch_size],
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=448,
-                ).to(device)
-                gen = model.generate(
-                    **enc,
-                    max_new_tokens=max_new_tokens,
-                    do_sample=False,
-                    pad_token_id=tok.pad_token_id,
-                )
-                new = gen[:, enc["input_ids"].shape[1] :]
-                for t in tok.batch_decode(new, skip_special_tokens=True):
-                    t = t.strip()
-                    out.append(strip_markers(t) if strip else t)
-        finally:
-            tok.padding_side = prev
-        return out
+        return generate_batched(
+            model,
+            tok,
+            prompts,
+            device=device,
+            batch_size=batch_size,
+            max_new_tokens=max_new_tokens,
+            max_length=448,
+            post=strip_markers if strip else None,
+        )
 
     return generate_fn
 

@@ -1,4 +1,11 @@
 from .checkpoints import resolve_best_checkpoint
+from .config import EvalConfig
+from .generation import (
+    DEFAULT_BASE_MODEL,
+    generate_batched,
+    load_generation_model,
+    resolve_eval_model,
+)
 from .leaderboard import (
     RunSpec,
     aggregate_rows,
@@ -28,6 +35,11 @@ __all__ = [
     "compute_eojeol_accuracy",
     "evaluate_all",
     "resolve_best_checkpoint",
+    "EvalConfig",
+    "DEFAULT_BASE_MODEL",
+    "generate_batched",
+    "load_generation_model",
+    "resolve_eval_model",
     "RunSpec",
     "discover_runs",
     "rank_rows",

@@ -9,140 +9,84 @@ import time
 from pathlib import Path
 
 import fire
-import torch
 from datasets import load_from_disk
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoTokenizer
 
 from ko_dialect.data import ChatTemplate
-from ko_dialect.evaluation import evaluate_all, resolve_best_checkpoint
+from ko_dialect.evaluation import (
+    EvalConfig,
+    evaluate_all,
+    generate_batched,
+    load_generation_model,
+)
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Standard fp16 base for RTX 2060 (Turing, no BF16). The adapter records an
-# Unsloth 4-bit base, but the LoRA weights are architecture-compatible with the
-# plain fp16 checkpoint, which is what we want for evaluation on this GPU.
-DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
-
-
-def load_model_and_tokenizer(model_path: str, base_model: str | None):
-    """Load a full model, or a LoRA adapter merged onto its base, plus tokenizer."""
-    resolved = resolve_best_checkpoint(model_path)
-    if (Path(resolved) / "adapter_config.json").exists():
-        from peft import PeftModel
-
-        base = base_model or DEFAULT_BASE_MODEL
-        logger.info("Detected LoRA adapter at %s; base=%s", resolved, base)
-        tokenizer = AutoTokenizer.from_pretrained(resolved)
-        model = AutoModelForCausalLM.from_pretrained(
-            base, torch_dtype=torch.float16, device_map="auto"
-        )
-        model = PeftModel.from_pretrained(model, resolved)
-        model = model.merge_and_unload()
-    else:
-        logger.info("Loading full model from %s", resolved)
-        tokenizer = AutoTokenizer.from_pretrained(resolved)
-        model = AutoModelForCausalLM.from_pretrained(
-            resolved, torch_dtype=torch.float16, device_map="auto"
-        )
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-    model.eval()
-    return model, tokenizer
-
-
-@torch.no_grad()
-def generate_batched(
-    model,
-    tokenizer,
-    prompts: list[str],
-    device,
-    batch_size: int = 16,
-    max_new_tokens: int = 128,
-) -> list[str]:
-    """Greedy-decode ``prompts`` in batches.
-
-    Decoder-only models require **left padding** for correct batched generation:
-    right padding would push pad tokens between the prompt and the first generated
-    token, corrupting the output. With left padding every row shares the same input
-    length, so a single slice recovers the generated continuation for the whole batch.
-    """
-    prev_side = tokenizer.padding_side
-    tokenizer.padding_side = "left"
-    outputs: list[str] = []
-    try:
-        for start in range(0, len(prompts), batch_size):
-            chunk = prompts[start : start + batch_size]
-            enc = tokenizer(
-                chunk,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-            ).to(device)
-            gen_ids = model.generate(
-                **enc,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                pad_token_id=tokenizer.pad_token_id,
-            )
-            new_ids = gen_ids[:, enc["input_ids"].shape[1] :]
-            decoded = tokenizer.batch_decode(new_ids, skip_special_tokens=True)
-            outputs.extend(text.strip() for text in decoded)
-            logger.info("Generated %d / %d", len(outputs), len(prompts))
-    finally:
-        tokenizer.padding_side = prev_side
-    return outputs
-
 
 def main(
     model_path: str,
-    raw_dataset_path: str,
-    classifier_path: str,
-    cls_tokenizer_name: str = "Qwen/Qwen2.5-0.5B-Instruct",
+    raw_dataset_path: str | None = None,
+    classifier_path: str | None = None,
+    cls_tokenizer_name: str | None = None,
     base_model: str | None = None,
     target_do: str = "gangwondo",
-    split: str = "valid",
-    n_samples: int = 500,
-    max_new_tokens: int = 128,
-    batch_size: int = 16,
+    split: str | None = None,
+    n_samples: int | None = None,
+    max_new_tokens: int | None = None,
+    batch_size: int | None = None,
     output_file: str | None = None,
+    config: str | None = None,
 ) -> None:
-    """
+    """Evaluate a single model: TDR / DFS / eojeol accuracy + surface metrics.
+
+    Defaults come from ``configs/eval/default.yaml`` (override ``config`` to point
+    elsewhere); any explicit flag wins over the config value.
+
     Args:
-        model_path: Path to the trained causal LM (SFT/GRPO output dir or a
-            specific checkpoint). A Trainer output dir holding only checkpoint-*
-            subdirs is resolved to its latest checkpoint automatically.
-        raw_dataset_path: Path to original dialect Arrow dataset (for references).
-        classifier_path: Path to TextCNN classifier (output of stage2).
+        model_path: Trained causal LM (SFT/GRPO output dir or a specific checkpoint).
+            A Trainer dir holding only checkpoint-* subdirs resolves to its latest.
+        raw_dataset_path: Original dialect Arrow dataset (gold references).
+        classifier_path: TextCNN classifier (output of stage2) for tdr/dfs.
         cls_tokenizer_name: Tokenizer matching the classifier.
-        base_model: Base model for LoRA adapters (default Qwen/Qwen2.5-0.5B-Instruct,
-            fp16). Ignored when model_path is a full (merged) model.
-        target_do: Dialect to evaluate (gangwondo | gyeongsangdo).
+        base_model: Base for LoRA adapters (fp16); ignored for full/merged models.
+        target_do: Dialect to evaluate (gangwondo | gyeongsangdo | ...).
         split: Dataset split to evaluate on.
-        n_samples: Number of samples to evaluate (0 = all).
-        max_new_tokens: Max tokens to generate per sample.
-        batch_size: Prompts decoded per forward pass. Larger = faster until VRAM
-            saturates; on an 8 GB RTX 2060, 16-32 is a good starting point.
+        n_samples: Samples to evaluate (0 = all).
+        max_new_tokens: Max tokens generated per sample.
+        batch_size: Prompts per forward pass (16-32 fits a 6GB RTX 2060).
         output_file: Optional JSON file to write metric results.
+        config: Path to an eval YAML (defaults to configs/eval/default.yaml).
     """
+    cfg = EvalConfig.load(
+        config,
+        raw_dataset_path=raw_dataset_path,
+        classifier_path=classifier_path,
+        cls_tokenizer_name=cls_tokenizer_name,
+        split=split,
+        n_samples=n_samples,
+        max_new_tokens=max_new_tokens,
+        batch_size=batch_size,
+    )
+
     logger.info("Loading generation model from %s", model_path)
-    model, tokenizer = load_model_and_tokenizer(model_path, base_model)
+    model, tokenizer = load_generation_model(model_path, base_model)
     device = next(model.parameters()).device
 
-    cls_tokenizer = AutoTokenizer.from_pretrained(cls_tokenizer_name)
+    cls_tokenizer = AutoTokenizer.from_pretrained(cfg.cls_tokenizer_name)
     if cls_tokenizer.pad_token is None:
         cls_tokenizer.pad_token = cls_tokenizer.eos_token
 
-    classifier = TextCNNForSequenceClassification.from_pretrained(classifier_path)
+    classifier = TextCNNForSequenceClassification.from_pretrained(cfg.classifier_path)
     classifier.eval().to(device)
 
-    logger.info("Loading eval dataset from %s [%s]", raw_dataset_path, split)
-    ds = load_from_disk(raw_dataset_path)
-    eval_ds = ds[split].filter(lambda x: x["do"] == target_do and not x["is_identical"])
-    if n_samples and n_samples < len(eval_ds):
-        eval_ds = eval_ds.select(range(n_samples))
-    logger.info("Evaluating on %d samples (batch_size=%d)", len(eval_ds), batch_size)
+    logger.info("Loading eval dataset from %s [%s]", cfg.raw_dataset_path, cfg.split)
+    ds = load_from_disk(cfg.raw_dataset_path)
+    eval_ds = ds[cfg.split].filter(lambda x: x["do"] == target_do and not x["is_identical"])
+    if cfg.n_samples and cfg.n_samples < len(eval_ds):
+        eval_ds = eval_ds.select(range(cfg.n_samples))
+    logger.info("Evaluating on %d samples (batch_size=%d)", len(eval_ds), cfg.batch_size)
 
     template = ChatTemplate()
     prompts = [
@@ -158,9 +102,9 @@ def main(
         model,
         tokenizer,
         prompts,
-        device,
-        batch_size=batch_size,
-        max_new_tokens=max_new_tokens,
+        device=device,
+        batch_size=cfg.batch_size,
+        max_new_tokens=cfg.max_new_tokens,
     )
     elapsed = time.perf_counter() - t0
     logger.info(

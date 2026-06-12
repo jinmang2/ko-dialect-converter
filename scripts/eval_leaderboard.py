@@ -34,6 +34,7 @@ from datasets import load_from_disk
 from transformers import AutoTokenizer
 
 from ko_dialect.evaluation import grpo_runs
+from ko_dialect.evaluation.generation import generate_batched
 from ko_dialect.evaluation.leaderboard import (
     DIALECTNESS_AXIS,
     FIDELITY_AXIS,
@@ -59,32 +60,17 @@ BASE = "outputs/sft_merged"
 CLS = "outputs/classifier_clean"
 
 
-@torch.no_grad()
 def _make_generate_fn(device, batch_size: int = 16, max_new_tokens: int = 64):
     def generate_fn(model, tok, prompts):
-        prev = tok.padding_side
-        tok.padding_side = "left"
-        out: list[str] = []
-        try:
-            for i in range(0, len(prompts), batch_size):
-                enc = tok(
-                    prompts[i : i + batch_size],
-                    return_tensors="pt",
-                    padding=True,
-                    truncation=True,
-                    max_length=448,
-                ).to(device)
-                gen = model.generate(
-                    **enc,
-                    max_new_tokens=max_new_tokens,
-                    do_sample=False,
-                    pad_token_id=tok.pad_token_id,
-                )
-                new = gen[:, enc["input_ids"].shape[1] :]
-                out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
-        finally:
-            tok.padding_side = prev
-        return out
+        return generate_batched(
+            model,
+            tok,
+            prompts,
+            device=device,
+            batch_size=batch_size,
+            max_new_tokens=max_new_tokens,
+            max_length=448,
+        )
 
     return generate_fn
 

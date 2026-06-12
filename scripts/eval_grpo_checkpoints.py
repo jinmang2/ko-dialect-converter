@@ -39,7 +39,7 @@ import torch
 from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from ko_dialect.evaluation import evaluate_all, grpo_runs
+from ko_dialect.evaluation import evaluate_all, generate_batched, grpo_runs
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -94,31 +94,16 @@ def _build_dia2std_prompt(dialect_text: str) -> str:
     return f"다음 방언 문장을 표준어로 바꿔줘.\n방언: {dialect_text}\n표준어: "
 
 
-@torch.no_grad()
 def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
-    prev = tok.padding_side
-    tok.padding_side = "left"
-    out = []
-    try:
-        for i in range(0, len(prompts), batch_size):
-            enc = tok(
-                prompts[i : i + batch_size],
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=448,
-            ).to(device)
-            gen = model.generate(
-                **enc,
-                max_new_tokens=max_new_tokens,
-                do_sample=False,
-                pad_token_id=tok.pad_token_id,
-            )
-            new = gen[:, enc["input_ids"].shape[1] :]
-            out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
-    finally:
-        tok.padding_side = prev
-    return out
+    return generate_batched(
+        model,
+        tok,
+        prompts,
+        device=device,
+        batch_size=batch_size,
+        max_new_tokens=max_new_tokens,
+        max_length=448,
+    )
 
 
 def eval_one(
