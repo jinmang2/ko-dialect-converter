@@ -31,10 +31,9 @@ Never set `bf16=True` in TrainingArguments — use `fp16=True`.
 pip install -e ".[dev]"
 pre-commit install
 
-# Lint / format (works now)
-ruff check .
-black .
-isort .
+# Lint / format (works now) — ruff is the single tool (replaces black + isort)
+ruff check . --fix     # lint + import order
+ruff format .          # style (line length 100)
 
 # Tests (no GPU needed) — after test suite is added
 pytest tests/ -x -q -m "not gpu"
@@ -89,7 +88,7 @@ python scripts/bench_serving.py --model_path outputs/grpo_arm1_merged --target_d
 ## Development Conventions
 
 - **Python 3.11+**, typed where practical (`from __future__ import annotations`)
-- **Formatter**: `black` (line length 88) + `isort`
+- **Formatter**: `ruff format` (line length 100) — single tool, also does import sorting via the `I` lint rule (black + isort were removed)
 - **Linter**: `ruff` — treat warnings as errors in CI
 - **No notebooks in `src/`** — use `scripts/` for one-off experiments
 - **Config files are YAML** under `configs/` — never hardcode hyperparams in Python

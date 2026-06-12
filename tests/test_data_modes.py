@@ -28,9 +28,7 @@ def raw_ds():
 
 
 def test_structured_mode_emits_raw_columns(raw_ds, mock_tokenizer):
-    out = data_dataset.build_sft_dataset(
-        raw_ds, mock_tokenizer, output_mode="structured"
-    )
+    out = data_dataset.build_sft_dataset(raw_ds, mock_tokenizer, output_mode="structured")
     cols = set(out["train"].column_names)
     assert cols == {"source", "target", "do", "direction"}
     # both_directions=True → 2 rows per source example
@@ -57,13 +55,8 @@ def test_single_direction_halves_rows(raw_ds, mock_tokenizer):
 
 
 def test_add_sentence_final_marker_before_punctuation():
-    assert (
-        data_dataset.add_sentence_final_marker("밥 먹었나?", "<UP>") == "밥 먹었나<UP>?"
-    )
-    assert (
-        data_dataset.add_sentence_final_marker("밥 먹었나", "<DOWN>")
-        == "밥 먹었나<DOWN>"
-    )
+    assert data_dataset.add_sentence_final_marker("밥 먹었나?", "<UP>") == "밥 먹었나<UP>?"
+    assert data_dataset.add_sentence_final_marker("밥 먹었나", "<DOWN>") == "밥 먹었나<DOWN>"
     assert data_dataset.add_sentence_final_marker("밥 먹었나?", None) == "밥 먹었나?"
 
 

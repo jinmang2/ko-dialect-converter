@@ -72,9 +72,7 @@ def main(
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
     template = ChatTemplate()
-    prompts = [
-        template.build_prompt(tok, r["source"], target_do, direction) for r in rows
-    ]
+    prompts = [template.build_prompt(tok, r["source"], target_do, direction) for r in rows]
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = AutoModelForCausalLM.from_pretrained(
@@ -132,13 +130,18 @@ def main(
     print(f"  device           : {device}")
     print(f"  latency p50/p95  : {lat['latency_ms_p50']} / {lat['latency_ms_p95']} ms")
     print(f"  latency mean/max : {lat['latency_ms_mean']} / {lat['latency_ms_max']} ms")
-    print(f"  throughput       : {lat['requests_per_sec']} req/s, "
-          f"{lat.get('tokens_per_sec', 0)} tok/s")
+    print(
+        f"  throughput       : {lat['requests_per_sec']} req/s, "
+        f"{lat.get('tokens_per_sec', 0)} tok/s"
+    )
     print(f"  chrF vs ref      : {quality['chrf_vs_ref']}")
-    print(f"  copy_margin      : {quality['copy_margin']}  "
-          f"(>0 = genuine conversion, ~0 = copy-bias)")
-    print(f"  exact match      : {quality['exact_match']}/{len(rows)} "
-          f"({quality['exact_match_pct']}%)  [low is normal for dialect]")
+    print(
+        f"  copy_margin      : {quality['copy_margin']}  (>0 = genuine conversion, ~0 = copy-bias)"
+    )
+    print(
+        f"  exact match      : {quality['exact_match']}/{len(rows)} "
+        f"({quality['exact_match_pct']}%)  [low is normal for dialect]"
+    )
 
     payload = {
         "schema": "ko_dialect.serving_bench/v1",

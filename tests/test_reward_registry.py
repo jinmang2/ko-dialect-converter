@@ -109,9 +109,7 @@ def test_length_builder_forwards_tuning_kwargs():
 def test_normalize_rescales_outputs_to_unit():
     # content is already [0,1] so its declared range is a no-op; edit too. Use length,
     # whose declared range is [0,1] — verify normalize=True keeps a valid [0,1] output.
-    funcs, _ = build_reward_fns(
-        [{"name": "content", "weight": 1.0}], normalize=True
-    )
+    funcs, _ = build_reward_fns([{"name": "content", "weight": 1.0}], normalize=True)
     out = funcs[0](
         prompts=[""],
         completions=["가나다"],

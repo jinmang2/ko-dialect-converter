@@ -118,8 +118,13 @@ def load_backbone(cfg: BackendConfig):
         "gptq": _load_ptq,
         "qat": _load_qat,
     }[cfg.backend]
-    logger.info("Loading backbone via backend=%s (dtype=%s, 4bit=%s, lora=%s)",
-                cfg.backend, cfg.dtype, cfg.load_in_4bit, cfg.apply_lora)
+    logger.info(
+        "Loading backbone via backend=%s (dtype=%s, 4bit=%s, lora=%s)",
+        cfg.backend,
+        cfg.dtype,
+        cfg.load_in_4bit,
+        cfg.apply_lora,
+    )
     return loader(cfg)
 
 
@@ -216,9 +221,7 @@ def _load_loftq(cfg: BackendConfig):
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     tokenizer = _ensure_pad_token(AutoTokenizer.from_pretrained(cfg.model_name))
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name, torch_dtype=resolve_dtype(cfg)
-    )
+    model = AutoModelForCausalLM.from_pretrained(cfg.model_name, torch_dtype=resolve_dtype(cfg))
     loftq_config = LoftQConfig(loftq_bits=4)
     lora_cfg = LoraConfig(
         r=cfg.lora_r,

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Evaluation: compute TDR / DFS / eojeol accuracy for a trained model."""
+
 from __future__ import annotations
 
 import json
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 # Unsloth 4-bit base, but the LoRA weights are architecture-compatible with the
 # plain fp16 checkpoint, which is what we want for evaluation on this GPU.
 DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
+
 
 def load_model_and_tokenizer(model_path: str, base_model: str | None):
     """Load a full model, or a LoRA adapter merged onto its base, plus tokenizer."""
@@ -137,9 +139,7 @@ def main(
 
     logger.info("Loading eval dataset from %s [%s]", raw_dataset_path, split)
     ds = load_from_disk(raw_dataset_path)
-    eval_ds = ds[split].filter(
-        lambda x: x["do"] == target_do and not x["is_identical"]
-    )
+    eval_ds = ds[split].filter(lambda x: x["do"] == target_do and not x["is_identical"])
     if n_samples and n_samples < len(eval_ds):
         eval_ds = eval_ds.select(range(n_samples))
     logger.info("Evaluating on %d samples (batch_size=%d)", len(eval_ds), batch_size)

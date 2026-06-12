@@ -111,9 +111,7 @@ def _build_fluency(
             "reward 'fluency' requires a frozen reference LM (ref_model) + its "
             "tokenizer (ref_tokenizer); reuse the GRPO base model handle."
         )
-    return make_fluency_reward(
-        ref_model, ref_tokenizer, max_length=max_length, scale=fluency_scale
-    )
+    return make_fluency_reward(ref_model, ref_tokenizer, max_length=max_length, scale=fluency_scale)
 
 
 @register_reward("reconstruction")
@@ -139,9 +137,7 @@ def _build_reconstruction(
 
 
 @register_reward("length")
-def _build_length(
-    length_max_ratio: float = 1.5, length_tolerance: float = 0.2, **_: Any
-):
+def _build_length(length_max_ratio: float = 1.5, length_tolerance: float = 0.2, **_: Any):
     return make_length_reward(max_ratio=length_max_ratio, tolerance=length_tolerance)
 
 

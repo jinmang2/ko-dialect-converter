@@ -115,9 +115,7 @@ def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
                 pad_token_id=tok.pad_token_id,
             )
             new = gen[:, enc["input_ids"].shape[1] :]
-            out.extend(
-                t.strip() for t in tok.batch_decode(new, skip_special_tokens=True)
-            )
+            out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
     finally:
         tok.padding_side = prev
     return out
@@ -137,9 +135,7 @@ def eval_one(
 ):
     """Load model (+ optional adapter), generate, compute all metrics including
     reconstruction-BLEU via a second reverse-generation pass."""
-    model = AutoModelForCausalLM.from_pretrained(
-        base, torch_dtype=torch.float16, device_map="auto"
-    )
+    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float16, device_map="auto")
     if adapter:
         from peft import PeftModel
 
@@ -224,9 +220,9 @@ def main(
     """
     ds = load_from_disk(dataset_path)["valid"]
     ds = ds.filter(
-        lambda x: x["do"] == target_do
-        and x["direction"] == "std2dia"
-        and x["standard"] != x["dialect"]
+        lambda x: (
+            x["do"] == target_do and x["direction"] == "std2dia" and x["standard"] != x["dialect"]
+        )
     )
     ds = ds.select(range(grpo_runs.clamp_select_count(len(ds), n)))
 
@@ -252,9 +248,7 @@ def main(
 
     stages = grpo_runs.discover_grpo_stages(grpo_dir)
     if len(stages) == 1:
-        logger.warning(
-            "No GRPO adapter checkpoints found under %s; evaluating SFT only.", grpo_dir
-        )
+        logger.warning("No GRPO adapter checkpoints found under %s; evaluating SFT only.", grpo_dir)
 
     print(f"\nSweep: {target_do} std2dia, n={len(ds)}, select_by={select_by}")
     hdr = f"{'stage':10s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'recon_b':>9s} {'bleu':>8s} {'eojeol':>8s} {'jscore':>8s}"
@@ -297,9 +291,7 @@ def main(
     b_results = eval_buckets(
         all_outs[best[0]], gold, src, emaps, target_do, classifier, cls_tok, bucket_keys
     )
-    print(
-        f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}"
-    )
+    print(f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
     for bk, br in sorted(b_results.items()):
         n_bk = bucket_keys.count(bk)
         print(
@@ -319,9 +311,7 @@ def main(
         cls_tok,
         bucket_keys,
     )
-    print(
-        f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}"
-    )
+    print(f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
     for bk, br in sorted(sft_b.items()):
         n_bk = bucket_keys.count(bk)
         print(

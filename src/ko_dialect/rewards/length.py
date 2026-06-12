@@ -25,9 +25,7 @@ def make_length_reward(max_ratio: float = 1.5, tolerance: float = 0.2):
     """
     free = 1.0 + tolerance
     if max_ratio <= free:
-        raise ValueError(
-            f"length reward needs max_ratio ({max_ratio}) > 1 + tolerance ({free})."
-        )
+        raise ValueError(f"length reward needs max_ratio ({max_ratio}) > 1 + tolerance ({free}).")
     decay_span = max_ratio - free
 
     def r_length(prompts, completions, standard, dialect, direction=None, **kw):

@@ -35,6 +35,7 @@ Usage:
         --target_do gangwondo --direction std2dia --n 20         # backend=hf (default)
     python scripts/serve_sft_vllm.py --backend vllm ...          # once FlashInfer is fixed
 """
+
 from __future__ import annotations
 
 import glob
@@ -105,8 +106,8 @@ def _gen_vllm(model_path, prompts, max_new_tokens, gpu_mem, max_model_len, max_n
 
     llm = LLM(
         model=model_path,
-        dtype="float16",            # Turing: no bf16
-        enforce_eager=True,         # no CUDA graphs -> lower peak VRAM
+        dtype="float16",  # Turing: no bf16
+        enforce_eager=True,  # no CUDA graphs -> lower peak VRAM
         gpu_memory_utilization=gpu_mem,
         max_model_len=max_model_len,
         max_num_seqs=max_num_seqs,
@@ -135,7 +136,9 @@ def _gen_hf(model_path, prompts, max_new_tokens):
             chunk = prompts[i : i + 16]
             enc = tok(chunk, return_tensors="pt", padding=True, truncation=True).to(dev)
             gen = model.generate(
-                **enc, max_new_tokens=max_new_tokens, do_sample=False,
+                **enc,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,
                 pad_token_id=tok.pad_token_id,
             )
             new = gen[:, enc["input_ids"].shape[1] :]
@@ -159,15 +162,15 @@ def main(
     resolved = resolve_best_checkpoint(model_path)
     rows, template = _load_eval_samples(raw_dataset_path, split, target_do, direction, n)
     tokenizer = AutoTokenizer.from_pretrained(resolved)
-    prompts = [
-        template.build_prompt(tokenizer, r["source"], target_do, direction) for r in rows
-    ]
+    prompts = [template.build_prompt(tokenizer, r["source"], target_do, direction) for r in rows]
 
-    logger.info("Generating %d samples via backend=%s (%s, %s)", len(rows), backend,
-                target_do, direction)
+    logger.info(
+        "Generating %d samples via backend=%s (%s, %s)", len(rows), backend, target_do, direction
+    )
     if backend == "vllm":
-        gens = _gen_vllm(resolved, prompts, max_new_tokens, gpu_memory_utilization,
-                         max_model_len, max_num_seqs)
+        gens = _gen_vllm(
+            resolved, prompts, max_new_tokens, gpu_memory_utilization, max_model_len, max_num_seqs
+        )
     else:
         gens = _gen_hf(resolved, prompts, max_new_tokens)
 
@@ -181,9 +184,11 @@ def main(
         print(f"  GEN : {g}")
         print(f"  REF : {r['reference']}")
         print("  " + "-" * 74)
-    print(f"\nexact match vs reference: {exact}/{len(rows)} "
-          f"({100*exact/max(len(rows),1):.1f}%)  "
-          f"[low is normal — dialect conversion is many-valid-outputs]")
+    print(
+        f"\nexact match vs reference: {exact}/{len(rows)} "
+        f"({100 * exact / max(len(rows), 1):.1f}%)  "
+        f"[low is normal — dialect conversion is many-valid-outputs]"
+    )
 
 
 if __name__ == "__main__":

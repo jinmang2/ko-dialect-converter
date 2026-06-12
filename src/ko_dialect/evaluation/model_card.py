@@ -16,9 +16,7 @@ from .metric_registry import header_label
 _LANG_TAGS = ["ko"]
 
 
-def _yaml_frontmatter(
-    *, base_model: str, license: str, tags: list[str], pipeline_tag: str
-) -> str:
+def _yaml_frontmatter(*, base_model: str, license: str, tags: list[str], pipeline_tag: str) -> str:
     tag_lines = "\n".join(f"  - {t}" for t in tags)
     lang_lines = "\n".join(f"  - {ln}" for ln in _LANG_TAGS)
     return (

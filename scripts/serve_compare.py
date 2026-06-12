@@ -116,9 +116,7 @@ class MultiAdapterTranslator:
 
     def translate(self, sources: list[str], target_do: str, direction: str) -> dict[str, list[str]]:
         """Return ``{run_tag: [outputs]}`` for every served run on the same inputs."""
-        prompts = [
-            self.template.build_prompt(self.tok, s, target_do, direction) for s in sources
-        ]
+        prompts = [self.template.build_prompt(self.tok, s, target_do, direction) for s in sources]
         results: dict[str, list[str]] = {}
         for spec in self.specs:
             if spec.adapter is None:  # SFT = base with adapters disabled

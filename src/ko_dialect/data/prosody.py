@@ -18,9 +18,7 @@ PROSODY_MARKER_POLICY: dict[str, Any] = {
 
 def summarize_intonation(intonations: list[float]) -> dict | None:
     """raw F0 시계열 -> 요약 통계 (None 값/0 값 제외)"""
-    valid = [
-        p for p in intonations if p and p > PROSODY_MARKER_POLICY["valid_f0_min_hz"]
-    ]
+    valid = [p for p in intonations if p and p > PROSODY_MARKER_POLICY["valid_f0_min_hz"]]
     n = len(valid)
     if len(valid) < PROSODY_MARKER_POLICY["min_valid_points"]:
         return None
@@ -65,9 +63,7 @@ def add_sentence_final_marker(text: str, marker: str | None) -> str:
     return f"{text}{marker}"
 
 
-_MARKER_RE = re.compile(
-    "|".join(re.escape(m) for m in PROSODY_MARKER_POLICY["markers"])
-)
+_MARKER_RE = re.compile("|".join(re.escape(m) for m in PROSODY_MARKER_POLICY["markers"]))
 
 
 def strip_markers(text: str) -> str:

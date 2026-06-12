@@ -53,9 +53,7 @@ def build_sft_dataset(
     ``dia2std``. Missing markers are reported per split and fall back to plain dialect.
     """
     if output_mode not in ("text", "structured"):
-        raise ValueError(
-            f"output_mode must be 'text' or 'structured', got {output_mode!r}."
-        )
+        raise ValueError(f"output_mode must be 'text' or 'structured', got {output_mode!r}.")
     if template is None:
         template = ChatTemplate()
     if isinstance(dataset, Dataset):
@@ -298,15 +296,12 @@ def build_classification_dataset(
             else:
                 rows.append({"text": std_text, "label": DIALECT_LABELS["standard"]})
             if do in SUPPORTED_DO:
-                if filter_identical and sample.get(
-                    "is_identical", std_text == sample["dialect"]
-                ):
+                if filter_identical and sample.get("is_identical", std_text == sample["dialect"]):
                     n_identical += 1
                     continue
                 if (
                     min_norm_levenshtein is not None
-                    and norm_levenshtein(std_text, sample["dialect"])
-                    < min_norm_levenshtein
+                    and norm_levenshtein(std_text, sample["dialect"]) < min_norm_levenshtein
                 ):
                     n_near += 1
                     continue

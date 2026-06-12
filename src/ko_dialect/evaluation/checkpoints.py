@@ -11,6 +11,7 @@ Resolution order:
 3. The checkpoint with the newest mtime (the most recent run's last save).
 4. Fallback: highest step number (legacy behaviour).
 """
+
 from __future__ import annotations
 
 import json

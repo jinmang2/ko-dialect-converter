@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Stage 3: GRPO fine-tuning using TextCNN classifier as reward signal."""
+
 from __future__ import annotations
 
 # Unsloth must be imported before transformers/trl/peft so its mixed-precision and
@@ -43,14 +44,19 @@ def filter_long_prompts(dataset, tokenizer, max_prompt_tokens: int):
         return None
     before = len(dataset)
     lengths = dataset.map(
-        lambda b: {"_plen": [len(x) for x in tokenizer(b["prompt"], add_special_tokens=False)["input_ids"]]},
+        lambda b: {
+            "_plen": [len(x) for x in tokenizer(b["prompt"], add_special_tokens=False)["input_ids"]]
+        },
         batched=True,
         desc="measuring prompt lengths",
     )
     kept = lengths.filter(lambda r: r["_plen"] <= max_prompt_tokens).remove_columns("_plen")
     logger.info(
         "Prompt filter (<= %d toks): kept %d / %d rows (dropped %d)",
-        max_prompt_tokens, len(kept), before, before - len(kept),
+        max_prompt_tokens,
+        len(kept),
+        before,
+        before - len(kept),
     )
     return kept
 

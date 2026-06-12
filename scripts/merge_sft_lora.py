@@ -11,6 +11,7 @@ Usage:
         --adapter_path outputs/sft \
         --out outputs/sft_merged
 """
+
 from __future__ import annotations
 
 import logging

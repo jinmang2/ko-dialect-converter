@@ -30,7 +30,11 @@ def from_omegaconf(cls: type[T], *sections: DictConfig | dict | None, **override
     for section in sections:
         if section is None:
             continue
-        data = OmegaConf.to_container(section, resolve=True) if isinstance(section, DictConfig) else dict(section)
+        data = (
+            OmegaConf.to_container(section, resolve=True)
+            if isinstance(section, DictConfig)
+            else dict(section)
+        )
         for key, value in data.items():
             if key in field_names:
                 merged[key] = value

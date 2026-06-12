@@ -53,17 +53,14 @@ class MOGRPOTrainer(GRPOTrainer):
             # GRPOTrainer signature is (model, args, ...); args[1] is the config.
             train_args = args[1] if len(args) > 1 else None
         if train_args is None:
-            raise ValueError(
-                "MOGRPOTrainer requires a GRPOConfig via the `args=` keyword."
-            )
+            raise ValueError("MOGRPOTrainer requires a GRPOConfig via the `args=` keyword.")
 
         # Enforce the MO-GRPO algorithm. Both TRL branches live in
         # `_generate_and_score_completions`; this pair selects normalize-then-sum and
         # prevents TRL from re-normalizing the already per-objective-normalized sum.
         if getattr(train_args, "multi_objective_aggregation", None) != "normalize_then_sum":
             logger.info(
-                "MOGRPOTrainer: forcing multi_objective_aggregation='normalize_then_sum' "
-                "(was %r)",
+                "MOGRPOTrainer: forcing multi_objective_aggregation='normalize_then_sum' (was %r)",
                 getattr(train_args, "multi_objective_aggregation", None),
             )
             train_args.multi_objective_aggregation = "normalize_then_sum"

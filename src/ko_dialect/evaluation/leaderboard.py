@@ -132,8 +132,7 @@ def deltas_vs_baseline(
         out[tag] = {
             k: float(m[k]) - float(baseline[k])
             for k in metrics
-            if isinstance(m.get(k), (int, float))
-            and isinstance(baseline.get(k), (int, float))
+            if isinstance(m.get(k), (int, float)) and isinstance(baseline.get(k), (int, float))
         }
     return out
 
@@ -372,9 +371,7 @@ def evaluate_run(
     rev_prompts = [build_dia2std_prompt(o) for o in outs]
     rev = generate_fn(model, model_tokenizer, rev_prompts)
 
-    embed_fn = (
-        make_classifier_embed_fn(classifier, cls_tokenizer, device) if with_dfs else None
-    )
+    embed_fn = make_classifier_embed_fn(classifier, cls_tokenizer, device) if with_dfs else None
     metrics = evaluate_all(
         outputs=outs,
         dialect_refs=gold,

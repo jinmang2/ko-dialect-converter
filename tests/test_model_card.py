@@ -55,8 +55,10 @@ def test_card_has_frontmatter_and_sections():
 
 def test_card_embeds_per_region_metrics_with_arrows():
     card = build_model_card(
-        repo_id="me/x", run_tag="grpo_arm2",
-        base_model="base", record=_RECORD,
+        repo_id="me/x",
+        run_tag="grpo_arm2",
+        base_model="base",
+        record=_RECORD,
     )
     assert "copy_margin↑" in card  # direction arrow surfaced
     assert "gangwondo" in card and "gyeongsangdo" in card
@@ -66,25 +68,19 @@ def test_card_embeds_per_region_metrics_with_arrows():
 
 
 def test_card_significance_note_reflects_verdicts():
-    card = build_model_card(
-        repo_id="me/x", run_tag="grpo_arm2", base_model="base", record=_RECORD
-    )
+    card = build_model_card(repo_id="me/x", run_tag="grpo_arm2", base_model="base", record=_RECORD)
     assert "significant" in card
     assert "n.s." in card  # gyeongsangdo was not significant
 
 
 def test_card_without_record_omits_eval_but_stays_valid():
-    card = build_model_card(
-        repo_id="me/x", run_tag="SFT", base_model="base", record=None
-    )
+    card = build_model_card(repo_id="me/x", run_tag="SFT", base_model="base", record=None)
     assert "## Evaluation" not in card
     assert "## Training" in card
     assert card.startswith("---\n")
 
 
 def test_card_baseline_run_has_no_delta_note():
-    card = build_model_card(
-        repo_id="me/x", run_tag="SFT", base_model="base", record=_RECORD
-    )
+    card = build_model_card(repo_id="me/x", run_tag="SFT", base_model="base", record=_RECORD)
     # SFT is the baseline; significance dict has no SFT key -> placeholder text
     assert "baseline run" in card

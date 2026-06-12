@@ -9,7 +9,7 @@ It describes how to navigate this repo, run tasks, and contribute safely.
 1. **Read `CLAUDE.md` first** — it has hardware constraints, key commands, and conventions.
 2. **Never use `bf16`** — RTX 2060 (Turing, SM 7.5) does not support it.
 3. **Run `pytest tests/ -x -q` to verify changes** — GPU tests are skipped in CI.
-4. **Linting is required before any PR** — `ruff check . && black --check . && isort --check .`
+4. **Linting is required before any PR** — `ruff check . && ruff format --check .`
 5. **Do not commit large binary files** — models go to HuggingFace Hub.
 
 ---
@@ -72,7 +72,7 @@ pytest tests/ -x -q -m "not gpu"
 
 All CI jobs run on `ubuntu-latest` (no GPU). Jobs:
 
-1. **lint** — `ruff`, `black --check`, `isort --check`
+1. **lint** — `ruff check`, `ruff format --check`
 2. **test** — `pytest tests/ -x -q -m "not gpu"`
 3. **import-check** — `python -c "import ko_dialect"` (catches missing `__init__` exports)
 

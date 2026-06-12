@@ -23,16 +23,13 @@ jobs:
           cache: pip
 
       - name: Install lint tools
-        run: pip install ruff black isort
+        run: pip install "ruff==0.15.15"
 
-      - name: ruff
+      - name: ruff check (lint + import order)
         run: ruff check . --exclude .git
 
-      - name: black
-        run: black --check .
-
-      - name: isort
-        run: isort --check .
+      - name: ruff format (style)
+        run: ruff format --check .
 
   test:
     name: Tests (CPU-only)

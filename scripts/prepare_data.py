@@ -67,9 +67,7 @@ class SpeechKind(StrEnum):
     UNKNOWN = auto()
 
 
-def get_json_files(
-    data_path: os.PathLike | str, glob_pattern: str = "**/*.json"
-) -> list[Path]:
+def get_json_files(data_path: os.PathLike | str, glob_pattern: str = "**/*.json") -> list[Path]:
     return list(Path(data_path).glob(glob_pattern))
 
 
@@ -183,9 +181,7 @@ def _process_single_json(
         # 어절 단위 방언 매핑 (Double-ptr)
         s_time, e_time = t2s(sentence["startTime"]), t2s(sentence["endTime"])
         sentence_segments = [
-            segment
-            for segment in segments
-            if s_time <= segment["_start_seconds"] <= e_time + 0.01
+            segment for segment in segments if s_time <= segment["_start_seconds"] <= e_time + 0.01
         ]
         standard_words = (sentence.get("standard") or "").split()
         dialect_words = (sentence.get("dialect") or "").split()
@@ -274,7 +270,9 @@ def _process_single_json(
         prosody = summarize_intonation(sentence.get("intonations", []))
         marker = prosody_marker(prosody)
 
-        sentence_id = f"{data.get('fileName', os.path.basename(path))}_{int(sentence.get('sentenceId', 0))}"
+        sentence_id = (
+            f"{data.get('fileName', os.path.basename(path))}_{int(sentence.get('sentenceId', 0))}"
+        )
         samples.append(
             {
                 "id": sentence_id,
@@ -354,9 +352,7 @@ def _process_chunk_worker(
 
     pid = os.getpid()
     for split in ["train", "valid", "unknown"]:
-        local_handles[split] = open(
-            tmp_dir / f"{split}_worker_{pid}.jsonl", mode, **open_kwargs
-        )
+        local_handles[split] = open(tmp_dir / f"{split}_worker_{pid}.jsonl", mode, **open_kwargs)
 
     for f in file_chunk:
         try:
@@ -403,21 +399,15 @@ def prepare_dialect_dataset(
             with suppress(Exception):
                 shutil.rmtree(tmp_dir)
 
-    def _run_parallel(
-        max_workers: int | None = None, chunk_size: int = 1000, **fn_kwargs
-    ):
+    def _run_parallel(max_workers: int | None = None, chunk_size: int = 1000, **fn_kwargs):
         max_workers = max_workers or os.cpu_count() or 4
 
         # 태스크 균등 분할
         chunks = [files[i : i + chunk_size] for i in range(0, len(files), chunk_size)]
-        executor = ProcessPoolExecutor(
-            max_workers=max_workers, initializer=_init_worker
-        )
+        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker)
 
         futures = {
-            executor.submit(_process_chunk_worker, chunk, tmp_dir, **fn_kwargs): len(
-                chunk
-            )
+            executor.submit(_process_chunk_worker, chunk, tmp_dir, **fn_kwargs): len(chunk)
             for i, chunk in enumerate(chunks)
         }
         pbar = tqdm(total=len(files), desc="Processing Files", disable=not verbose)
@@ -446,9 +436,7 @@ def prepare_dialect_dataset(
             failed_path = output_dir / "failed_files.json"
             with open(failed_path, "w", encoding="utf-8") as f:
                 if _USING_ORJSON:
-                    f.write(
-                        orjson.dumps(failed, option=orjson.OPT_INDENT_2).decode("utf-8")
-                    )
+                    f.write(orjson.dumps(failed, option=orjson.OPT_INDENT_2).decode("utf-8"))
                 else:
                     import json
 
@@ -470,10 +458,7 @@ def prepare_dialect_dataset(
                     wf.unlink()
 
         dataset = DatasetDict(
-            {
-                split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl"))
-                for split in splits_found
-            }
+            {split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl")) for split in splits_found}
         )
         save_path = output_dir / f"dialect_raw_{'old' if use_old_format else 'new'}"
         dataset.save_to_disk(str(save_path))
@@ -482,9 +467,7 @@ def prepare_dialect_dataset(
             {
                 "dataset": save_path.name,
                 "source_format": "old" if use_old_format else "new",
-                "prosody_marker_policy": (
-                    None if use_old_format else PROSODY_MARKER_POLICY
-                ),
+                "prosody_marker_policy": (None if use_old_format else PROSODY_MARKER_POLICY),
             },
         )
 

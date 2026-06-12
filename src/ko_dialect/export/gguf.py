@@ -54,8 +54,10 @@ def convert_to_gguf(
         sys.executable,
         str(convert_script),
         model_path,
-        "--outfile", str(out),
-        "--outtype", outtype,
+        "--outfile",
+        str(out),
+        "--outtype",
+        outtype,
     ]
     logger.info("Converting to GGUF: %s", " ".join(cmd))
     subprocess.run(cmd, check=True)
@@ -110,17 +112,21 @@ def start_llama_server(
         server_bin = llama_cpp / "build" / "bin" / "llama-server"
     if not server_bin.exists():
         raise FileNotFoundError(
-            f"llama-server not found under {llama_cpp_dir}. "
-            "Build llama.cpp first."
+            f"llama-server not found under {llama_cpp_dir}. Build llama.cpp first."
         )
 
     cmd = [
         str(server_bin),
-        "--model", gguf_path,
-        "--host", host,
-        "--port", str(port),
-        "--ctx-size", str(n_ctx),
-        "--n-gpu-layers", str(n_gpu_layers),
+        "--model",
+        gguf_path,
+        "--host",
+        host,
+        "--port",
+        str(port),
+        "--ctx-size",
+        str(n_ctx),
+        "--n-gpu-layers",
+        str(n_gpu_layers),
     ]
     if chat_template:
         cmd += ["--chat-template", chat_template]

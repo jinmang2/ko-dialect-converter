@@ -136,7 +136,5 @@ def glossary_markdown(metrics: tuple[str, ...] | None = None) -> str:
     for k in keys:
         s = get_spec(k)
         better = "higher" if s.higher_is_better else "lower"
-        lines.append(
-            f"| `{k}` | {s.arrow} {better} | {s.group} | {s.meaning} | {s.caveat} |"
-        )
+        lines.append(f"| `{k}` | {s.arrow} {better} | {s.group} | {s.meaning} | {s.caveat} |")
     return "\n".join(lines)

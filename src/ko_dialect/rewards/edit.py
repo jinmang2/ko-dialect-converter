@@ -40,12 +40,8 @@ def r_edit(prompts, completions, standard, dialect, dialect_eojeol_map, directio
 
         gen_word_set = tokenize_words(gen)
 
-        std_words = [
-            n for e in eojeol_map if (n := normalize_eojeol(e.get("standard", "")))
-        ]
-        dia_words = [
-            n for e in eojeol_map if (n := normalize_eojeol(e.get("dialect", "")))
-        ]
+        std_words = [n for e in eojeol_map if (n := normalize_eojeol(e.get("standard", "")))]
+        dia_words = [n for e in eojeol_map if (n := normalize_eojeol(e.get("dialect", "")))]
 
         if not std_words:
             rewards.append(0.5)
@@ -102,9 +98,7 @@ def r_edit_precision(
         src = std if dir_i == "std2dia" else dia
 
         src_words = tokenize_words(src)
-        target_std = {
-            n for e in eojeol_map if (n := normalize_eojeol(e.get("standard", "")))
-        }
+        target_std = {n for e in eojeol_map if (n := normalize_eojeol(e.get("standard", "")))}
         # Words that must be carried through unchanged (everything but the targets).
         nontarget = src_words - target_std
 
@@ -147,9 +141,7 @@ def r_edit_recall(
     rewards = []
     for i, (gen, eojeol_map) in enumerate(zip(texts, dialect_eojeol_map)):
         eojeol_map = list(eojeol_map) if eojeol_map else []
-        dia_words = {
-            n for e in eojeol_map if (n := normalize_eojeol(e.get("dialect", "")))
-        }
+        dia_words = {n for e in eojeol_map if (n := normalize_eojeol(e.get("dialect", "")))}
         if not dia_words:
             # is_identical row (no targets): nothing to recall — vacuously satisfied.
             rewards.append(1.0)

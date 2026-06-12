@@ -183,9 +183,7 @@ def test_payload_v2_has_pareto_and_joint():
 
 
 def test_format_table_header_has_direction_arrows():
-    table = format_leaderboard_table(
-        [("SFT", {"copy_margin": -5.0})], metrics=("copy_margin",)
-    )
+    table = format_leaderboard_table([("SFT", {"copy_margin": -5.0})], metrics=("copy_margin",))
     assert "copy_margin↑" in table  # higher-is-better arrow surfaced in header
 
 
@@ -231,8 +229,6 @@ def test_format_table_flags_frontier_with_star():
         ("SFT", {"reconstruction_bleu": 38.0}),
         ("arm2", {"reconstruction_bleu": 37.0}),
     ]
-    table = format_leaderboard_table(
-        ranked, metrics=("reconstruction_bleu",), frontier=["arm2"]
-    )
+    table = format_leaderboard_table(ranked, metrics=("reconstruction_bleu",), frontier=["arm2"])
     assert "arm2 ★" in table
     assert "| SFT |" in table  # not flagged

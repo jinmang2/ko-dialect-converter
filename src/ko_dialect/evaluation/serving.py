@@ -49,7 +49,5 @@ def summarize_latencies(
     if new_tokens:
         total_tokens = sum(new_tokens)
         out["total_new_tokens"] = total_tokens
-        out["tokens_per_sec"] = (
-            round(total_tokens / total_time, 2) if total_time > 0 else 0.0
-        )
+        out["tokens_per_sec"] = round(total_tokens / total_time, 2) if total_time > 0 else 0.0
     return out

@@ -127,9 +127,7 @@ def main(
                 "output_mode": output_mode,
                 "both_directions": both_directions,
                 "include_prosody": include_prosody,
-                "prosody_marker_policy": (
-                    PROSODY_MARKER_POLICY if include_prosody else None
-                ),
+                "prosody_marker_policy": (PROSODY_MARKER_POLICY if include_prosody else None),
                 "prosody_marker_coverage": prosody_marker_coverage,
                 "raw_manifest": raw_manifest,
             },
@@ -141,9 +139,7 @@ def main(
     logger.info("SFT saved: %s", sft_ds)
 
     logger.info("Building GRPO prompt dataset ...")
-    grpo_ds = dialect_data.build_grpo_dataset(
-        dataset, tokenizer, template, direction="std2dia"
-    )
+    grpo_ds = dialect_data.build_grpo_dataset(dataset, tokenizer, template, direction="std2dia")
     grpo_ds.save_to_disk(str(out / "grpo"))
     logger.info("GRPO saved: %s", grpo_ds)
 

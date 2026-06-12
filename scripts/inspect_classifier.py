@@ -21,6 +21,7 @@ Usage:
         --raw_dataset_path outputs/dialect_raw_new \
         --n_errors 30 --out outputs/eval_logs/classifier_report.json
 """
+
 from __future__ import annotations
 
 import json
@@ -157,7 +158,12 @@ def main(
 
     # ---- worst (most confident) misclassifications ----
     wrong = [
-        {"text": texts[i], "true": ID2LABEL[labels[i]], "pred": ID2LABEL[preds[i]], "conf": confs[i]}
+        {
+            "text": texts[i],
+            "true": ID2LABEL[labels[i]],
+            "pred": ID2LABEL[preds[i]],
+            "conf": confs[i],
+        }
         for i in range(len(texts))
         if preds[i] != labels[i]
     ]

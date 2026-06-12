@@ -114,9 +114,7 @@ def train(
 
     callbacks = []
     if cfg.early_stopping_patience is not None and eval_dataset is not None:
-        callbacks.append(
-            EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience)
-        )
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience))
 
     trainer = Trainer(
         model=model,

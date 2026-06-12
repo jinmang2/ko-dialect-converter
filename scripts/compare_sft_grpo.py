@@ -122,9 +122,7 @@ def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
                 pad_token_id=tok.pad_token_id,
             )
             new = gen[:, enc["input_ids"].shape[1] :]
-            out.extend(
-                t.strip() for t in tok.batch_decode(new, skip_special_tokens=True)
-            )
+            out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
     finally:
         tok.padding_side = prev
     return out
@@ -134,9 +132,7 @@ def load(base: str, adapter: str | None):
     tok = AutoTokenizer.from_pretrained(base, local_files_only=True)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    model = AutoModelForCausalLM.from_pretrained(
-        base, torch_dtype=torch.float16, device_map="auto"
-    )
+    model = AutoModelForCausalLM.from_pretrained(base, torch_dtype=torch.float16, device_map="auto")
     if adapter:
         from peft import PeftModel
 
@@ -196,9 +192,9 @@ def main(
     """
     ds = load_from_disk(dataset_path)["valid"]
     ds = ds.filter(
-        lambda x: x["do"] == target_do
-        and x["direction"] == "std2dia"
-        and x["standard"] != x["dialect"]
+        lambda x: (
+            x["do"] == target_do and x["direction"] == "std2dia" and x["standard"] != x["dialect"]
+        )
     )
     ds = ds.select(range(clamp_select_count(len(ds), n)))
     prompts = list(ds["prompt"])
@@ -278,9 +274,7 @@ def main(
         "bleu",
         "jscore",
     ]
-    print(
-        f"{'metric':22s} {'SFT':>10s} {'GRPO':>10s} {'Δ(GRPO-SFT)':>14s} {'GOLD':>10s}"
-    )
+    print(f"{'metric':22s} {'SFT':>10s} {'GRPO':>10s} {'Δ(GRPO-SFT)':>14s} {'GOLD':>10s}")
     for k in keys:
         s = results["SFT"].get(k, float("nan"))
         g = results["GRPO"].get(k, float("nan"))
@@ -313,9 +307,7 @@ def main(
             gens[tag], gold, src, emaps, target_do, classifier, cls_tok, bucket_keys
         )
         print(f"\n  [{tag}]")
-        print(
-            f"  {'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}"
-        )
+        print(f"  {'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
         for bk, br in sorted(b_res.items()):
             n_bk = bucket_keys.count(bk)
             print(

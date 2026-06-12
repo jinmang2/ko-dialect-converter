@@ -49,11 +49,16 @@ def _make_generate_fn(device, *, strip: bool, batch_size=16, max_new_tokens=64):
         try:
             for i in range(0, len(prompts), batch_size):
                 enc = tok(
-                    prompts[i : i + batch_size], return_tensors="pt",
-                    padding=True, truncation=True, max_length=448,
+                    prompts[i : i + batch_size],
+                    return_tensors="pt",
+                    padding=True,
+                    truncation=True,
+                    max_length=448,
                 ).to(device)
                 gen = model.generate(
-                    **enc, max_new_tokens=max_new_tokens, do_sample=False,
+                    **enc,
+                    max_new_tokens=max_new_tokens,
+                    do_sample=False,
                     pad_token_id=tok.pad_token_id,
                 )
                 new = gen[:, enc["input_ids"].shape[1] :]
@@ -80,9 +85,9 @@ def main(
     """Compare the control and prosody SFT models on a held-out region slice."""
     ds = load_from_disk(dataset_path)["valid"]
     ds = ds.filter(
-        lambda x: x["do"] == target_do
-        and x["direction"] == "std2dia"
-        and x["standard"] != x["dialect"]
+        lambda x: (
+            x["do"] == target_do and x["direction"] == "std2dia" and x["standard"] != x["dialect"]
+        )
     )
     ds = ds.select(range(grpo_runs.clamp_select_count(len(ds), n)))
     prompts, gold = list(ds["prompt"]), list(ds["dialect"])
@@ -108,9 +113,15 @@ def main(
         gen_fn = _make_generate_fn(device, strip=strip, max_new_tokens=max_new_tokens)
         metrics, _outs, rev = evaluate_run(
             RunSpec(tag, base_model, adapter),
-            prompts=prompts, gold=gold, src=src, emaps=emaps, target_do=target_do,
-            classifier=classifier, cls_tokenizer=cls_tok,
-            model_tokenizer=model_tok, generate_fn=gen_fn,
+            prompts=prompts,
+            gold=gold,
+            src=src,
+            emaps=emaps,
+            target_do=target_do,
+            classifier=classifier,
+            cls_tokenizer=cls_tok,
+            model_tokenizer=model_tok,
+            generate_fn=gen_fn,
         )
         rows[tag] = metrics
         recon[tag] = [sent_bleu.sentence_score(r, [s]).score for r, s in zip(rev, src)]
@@ -125,9 +136,7 @@ def main(
         print(f"{header_label(k):24s} {c:>10.3f} {p:>10.3f} {p - c:>+14.3f}")
 
     res = paired_bootstrap(recon["prosody"], recon["control"])
-    marker = significance_marker(
-        PairedResult(res.delta, res.p_value, res.win_rate, res.n_boot)
-    )
+    marker = significance_marker(PairedResult(res.delta, res.p_value, res.win_rate, res.n_boot))
     print(
         f"\nPaired bootstrap (Koehn 2004), per-sentence recon BLEU, prosody vs control:\n"
         f"  Δ={res.delta:+.2f}  p={res.p_value:.3f}  {marker} "

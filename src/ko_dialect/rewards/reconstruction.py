@@ -79,9 +79,7 @@ def make_reconstruction_reward(
                     pad_token_id=tokenizer.pad_token_id,
                 )
                 new = gen[:, enc["input_ids"].shape[1] :]
-                out.extend(
-                    t.strip() for t in tokenizer.batch_decode(new, skip_special_tokens=True)
-                )
+                out.extend(t.strip() for t in tokenizer.batch_decode(new, skip_special_tokens=True))
         finally:
             tokenizer.padding_side = prev
         return out

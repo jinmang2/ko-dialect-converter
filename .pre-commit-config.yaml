@@ -13,23 +13,13 @@ repos:
       - id: check-merge-conflict
       - id: debug-statements
 
-  - repo: https://github.com/psf/black
-    rev: 24.4.2
-    hooks:
-      - id: black
-        language_version: python3.11
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        args: ["--profile", "black"]
-
+  # ruff is the single formatter + linter (replaces black + isort).
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.4.9
+    rev: v0.15.15
     hooks:
       - id: ruff
         args: ["--fix"]
+      - id: ruff-format
 
   - repo: local
     hooks:

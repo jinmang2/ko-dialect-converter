@@ -81,9 +81,7 @@ def _make_generate_fn(device, batch_size: int = 16, max_new_tokens: int = 64):
                     pad_token_id=tok.pad_token_id,
                 )
                 new = gen[:, enc["input_ids"].shape[1] :]
-                out.extend(
-                    t.strip() for t in tok.batch_decode(new, skip_special_tokens=True)
-                )
+                out.extend(t.strip() for t in tok.batch_decode(new, skip_special_tokens=True))
         finally:
             tok.padding_side = prev
         return out
@@ -119,9 +117,9 @@ def _resolve_regions(target_do: str, all_regions: bool, ds) -> list[str]:
 
 def _region_slice(ds_valid, target_do: str, n: int):
     ds = ds_valid.filter(
-        lambda x: x["do"] == target_do
-        and x["direction"] == "std2dia"
-        and x["standard"] != x["dialect"]
+        lambda x: (
+            x["do"] == target_do and x["direction"] == "std2dia" and x["standard"] != x["dialect"]
+        )
     )
     ds = ds.select(range(grpo_runs.clamp_select_count(len(ds), n)))
     return (
@@ -241,15 +239,22 @@ def main(
         frontier = pareto_frontier(ranked)
         significance = _significance_block(recon_scores, baseline_tag)
         payload = build_leaderboard_payload(
-            ranked, select_by=select_by, target_do=region,
-            n_samples=len(prompts), baseline_tag=baseline_tag,
+            ranked,
+            select_by=select_by,
+            target_do=region,
+            n_samples=len(prompts),
+            baseline_tag=baseline_tag,
         )
         payload["significance_vs_baseline"] = significance
         per_region_rows[region] = ranked
         per_region_payload[region] = payload
         _print_scope(
             f"LEADERBOARD — {region} std2dia, n={len(prompts)}, by {select_by}↑",
-            ranked, frontier, significance, baseline_tag, select_by,
+            ranked,
+            frontier,
+            significance,
+            baseline_tag,
+            select_by,
         )
 
     if not per_region_rows:
@@ -263,15 +268,22 @@ def main(
         agg_frontier = pareto_frontier(agg_ranked)
         agg_sig = _significance_block(pooled_recon, baseline_tag)
         overall_payload = build_leaderboard_payload(
-            agg_ranked, select_by=select_by, target_do="OVERALL",
-            n_samples=int(sum(region_weights.values())), baseline_tag=baseline_tag,
+            agg_ranked,
+            select_by=select_by,
+            target_do="OVERALL",
+            n_samples=int(sum(region_weights.values())),
+            baseline_tag=baseline_tag,
         )
         overall_payload["significance_vs_baseline"] = agg_sig
         overall_payload["regions"] = list(per_region_rows)
         overall_payload["region_weights"] = region_weights
         _print_scope(
             f"LEADERBOARD — OVERALL (sample-weighted over {', '.join(per_region_rows)})",
-            agg_ranked, agg_frontier, agg_sig, baseline_tag, select_by,
+            agg_ranked,
+            agg_frontier,
+            agg_sig,
+            baseline_tag,
+            select_by,
         )
 
     print("\n" + glossary_markdown(LEADERBOARD_METRICS))
@@ -280,9 +292,7 @@ def main(
         "NOTE: no single winner is forced — inspect the Pareto frontier (★) per region "
         "and overall; ≈ means the recon gap vs baseline is within sampling noise."
     )
-    scope_runs = " ".join(
-        (overall_payload or per_region_payload[regions[0]])["pareto_frontier"]
-    )
+    scope_runs = " ".join((overall_payload or per_region_payload[regions[0]])["pareto_frontier"])
     print(
         "\nTo compare the Pareto-optimal runs at inference time (no commit needed):\n"
         f"  python scripts/serve_compare.py --runs '{scope_runs}' "
@@ -312,8 +322,13 @@ def main(
         md_sections.append(
             format_leaderboard_table(
                 rank_rows(
-                    [(t, m) for t, m in
-                     [(tag, overall_payload["rows"][tag]) for tag in overall_payload["ranking"]]],
+                    [
+                        (t, m)
+                        for t, m in [
+                            (tag, overall_payload["rows"][tag])
+                            for tag in overall_payload["ranking"]
+                        ]
+                    ],
                     select_by,
                 ),
                 frontier=overall_payload["pareto_frontier"],
@@ -322,9 +337,7 @@ def main(
     for region, ranked in scopes:
         md_sections.append(f"\n## {region}\n")
         md_sections.append(
-            format_leaderboard_table(
-                ranked, frontier=per_region_payload[region]["pareto_frontier"]
-            )
+            format_leaderboard_table(ranked, frontier=per_region_payload[region]["pareto_frontier"])
         )
     md_sections.append("\n## Metric glossary\n")
     md_sections.append(glossary_markdown(LEADERBOARD_METRICS))

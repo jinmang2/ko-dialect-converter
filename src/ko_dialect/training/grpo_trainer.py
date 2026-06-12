@@ -165,14 +165,10 @@ def build_joint_hm_reward(
     w_sum = float(sum(reward_weights))
 
     def joint_hm(prompts, completions, **columns) -> list[float]:
-        per_axis = [fn(prompts=prompts, completions=completions, **columns)
-                    for fn in reward_funcs]
+        per_axis = [fn(prompts=prompts, completions=completions, **columns) for fn in reward_funcs]
         out: list[float] = []
         for row in zip(*per_axis):
-            denom = sum(
-                w / (max(0.0, min(1.0, x)) + eps)
-                for w, x in zip(reward_weights, row)
-            )
+            denom = sum(w / (max(0.0, min(1.0, x)) + eps) for w, x in zip(reward_weights, row))
             out.append(w_sum / denom if denom > 0 else 0.0)
         return out
 

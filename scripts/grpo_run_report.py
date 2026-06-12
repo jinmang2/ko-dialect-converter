@@ -15,9 +15,7 @@ def main(*paths: str, zero_std_threshold: float = 0.3) -> None:
     if not paths:
         paths = tuple(
             str(path)
-            for path in sorted(
-                Path("outputs").glob("grpo*/checkpoint-*/trainer_state.json")
-            )
+            for path in sorted(Path("outputs").glob("grpo*/checkpoint-*/trainer_state.json"))
         )
     for path in paths:
         summary = summarize_trainer_state(path, zero_std_threshold=zero_std_threshold)

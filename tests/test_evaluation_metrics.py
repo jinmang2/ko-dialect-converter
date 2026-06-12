@@ -16,6 +16,7 @@ from ko_dialect.evaluation.metrics import (
 # compute_eojeol_accuracy
 # ---------------------------------------------------------------------------
 
+
 def test_eojeol_accuracy_perfect():
     outputs = ["나는 집에 갔당"]
     maps = [[{"dialect": "갔당", "standard": "갔다"}]]
@@ -30,10 +31,12 @@ def test_eojeol_accuracy_miss():
 
 def test_eojeol_accuracy_partial():
     outputs = ["나는 집에 갔당 먹었지"]
-    maps = [[
-        {"dialect": "갔당", "standard": "갔다"},
-        {"dialect": "먹겠나", "standard": "먹겠어"},
-    ]]
+    maps = [
+        [
+            {"dialect": "갔당", "standard": "갔다"},
+            {"dialect": "먹겠나", "standard": "먹겠어"},
+        ]
+    ]
     assert compute_eojeol_accuracy(outputs, maps) == pytest.approx(0.5)
 
 
@@ -49,8 +52,10 @@ def test_eojeol_accuracy_empty_outputs():
 # compute_tdr  (uses tiny_textcnn fixture from conftest)
 # ---------------------------------------------------------------------------
 
+
 class _FakeTokenizer:
     pad_token = "<pad>"
+
     def __call__(self, texts, **kwargs):
         return {"input_ids": torch.zeros(len(texts), 10, dtype=torch.long)}
 
@@ -69,10 +74,13 @@ def test_tdr_empty_returns_zero(tiny_textcnn):
 # compute_dfs  (no real embedder needed — synthetic tensors via lambda)
 # ---------------------------------------------------------------------------
 
+
 def _make_embed_fn(vecs: dict[str, torch.Tensor]):
     """Returns an embed_fn that looks up pre-computed tensors by text."""
+
     def embed_fn(texts):
         return torch.stack([vecs[t] for t in texts])
+
     return embed_fn
 
 
@@ -103,6 +111,7 @@ def test_dfs_empty_returns_zero():
 # compute_bleu / compute_chrf
 # ---------------------------------------------------------------------------
 
+
 def test_compute_bleu_perfect():
     sent = "나는 집에 갔당"
     score = compute_bleu([sent], [sent])
@@ -126,6 +135,7 @@ def test_compute_chrf_empty():
 # ---------------------------------------------------------------------------
 # evaluate_all  — bleu/chrf keys always present
 # ---------------------------------------------------------------------------
+
 
 def test_evaluate_all_has_bleu_chrf(tiny_textcnn):
     outputs = ["안녕"]
