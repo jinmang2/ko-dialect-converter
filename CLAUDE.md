@@ -81,7 +81,9 @@ python scripts/bench_serving.py --model_path outputs/grpo_arm1_merged --target_d
 - **Koehn 2004** (EMNLP) — paired bootstrap resampling for chrF/BLEU significance (reliable ≥ ~300 sents).
 - **TST trade-off** (arXiv:2010.12771 / 2010.12742) — style vs content are negatively correlated → report a Pareto frontier + harmonic-mean joint, don't force one rank.
 
-> **Note:** `scripts/`, `configs/`, `tests/` 디렉토리는 리빌딩 세션에서 생성 예정.
+> **Note:** `scripts/`, `configs/`, `tests/` 디렉토리는 구축 완료. 평가는 `scripts/eval.py`
+> (config-driven, `configs/eval/default.yaml`)로 통합되어 있고, 양자화/학습 처리량 벤치는
+> `scripts/quantize_eval.py` · `scripts/bench_train.py` 참고.
 
 ---
 

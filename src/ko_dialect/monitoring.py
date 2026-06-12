@@ -12,10 +12,7 @@ The builders are pure and unit-tested; ``log_panels`` is the only side-effecting
 
 from __future__ import annotations
 
-import logging
 from typing import Any
-
-logger = logging.getLogger(__name__)
 
 
 def marker_distribution_panel(counts: dict[str, int], prefix: str = "prosody") -> dict[str, float]:

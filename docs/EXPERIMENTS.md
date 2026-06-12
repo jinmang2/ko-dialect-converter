@@ -77,9 +77,48 @@ See memory `prosody-sft-ab-verdict`.
 
 ---
 
-## 3. Next: quantization (PTQ / QAT) — planned
+## 3. Quantization (PTQ) — measured
 
-Backends already scaffolded in `models/loading.py` (`bnb`, `loftq`, `awq`, `gptq`, `qat`)
-and `scripts/{ptq_quantize,export_gguf}.py`, but not yet measured. Plan: quantize the
-chosen model, then quantify the quality/latency/size trade-off with the same leaderboard +
-`bench_serving.py` harness. PTQ first (cheap), escalate to QAT only if PTQ degrades too much.
+`python scripts/quantize_eval.py --model_path outputs/sft_merged --target_do gangwondo`
+→ `outputs/eval_logs/quantize_tradeoff_*.json`. Trade-off summary is the CPU-tested
+`evaluation.serving.quantization_tradeoff` (size%, speedup, chrf_drop vs the fp16 baseline).
+
+First signal (sft_merged, gangwon, n=24):
+
+| variant | size | p50 latency | chrF | copy_margin |
+|---|---|---|---|---|
+| fp16 | 953 MB | 522 ms | 72.9 | −3.00 |
+| **bnb 4-bit (NF4)** | **238 MB (25%)** | **997 ms (0.52× — slower)** | 76.2 | −2.66 |
+
+**Verdict: 4-bit PTQ is a memory win, not a latency win on RTX 2060.** It cuts the
+footprint 4× with no quality loss (chrF/copy_margin within noise at n=24), but is ~2×
+*slower* — bitsandbytes 4-bit dequant overhead dominates for a 0.5B model without optimized
+Turing kernels. For actual speed, use the **GGUF Q4_K_M** path (llama.cpp,
+`scripts/export_gguf.py` + `bench_serving.py`). Escalate to QAT (`training.backend=qat`)
+only if a larger-n PTQ run shows real quality loss. (Caveat: n=24 — confirm at n≥300.)
+
+---
+
+## 4. Training optimization — DeepSpeed vs unsloth
+
+`scripts/bench_train.py` times a short SFT run → steady-state tokens/sec + peak VRAM.
+DeepSpeed ZeRO-2 + optimizer CPU-offload config in `configs/training/deepspeed_zero2_offload.json`
+(use `backend=bnb/hf` — unsloth patches the model and does not compose with the engine).
+
+Baseline (unsloth, bs=1, seq=256, 20 steps): **286 tok/s, 1.12 steps/s, peak VRAM 1284 MB**.
+On a single 6 GB GPU the CPU-offload transfer overhead is expected to lose to unsloth's
+fused kernels; the bench (`training.bench.compare_throughput`) settles it head-to-head.
+The DeepSpeed config exists mainly to be multi-GPU-ready.
+
+---
+
+## Prosody marker scheme (v2, K-ToBI-grounded)
+
+`src/ko_dialect/data/prosody.py` markers map to Korean Intonation-Phrase boundary tones
+(Jun 2000, *K-ToBI*): `<UP>`=H% / `<DOWN>`=L% (steep fall beyond declination) /
+`<WAVE>`=complex contour / `<KEEP>`=level. v2 is declination-aware (Korean F0 declines
+naturally) and keys `<WAVE>` on the F0 coefficient of variation (`f0_std/f0_mean`), which
+the stored summary carries, so all four classes fire — real 614k-row distribution
+**UP 19.4% / KEEP 51.9% / DOWN 22.8% / WAVE 5.7%** (v1 was 60% `<DOWN>` with a dead
+`<WAVE>`). Per-eojeol markers (Phase 2) recover word-level F0 by slicing the sentence series
+at each segment's time window. v1 frozen + reproducible (`prosody_marker(p, version=1)`).

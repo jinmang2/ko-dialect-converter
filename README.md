@@ -62,10 +62,22 @@ GRPO won't run / OOMs / reward-hacks → `.claude/skills/grpo-troubleshooting/SK
 ## Evaluate & serve
 
 ```bash
+# Unified entrypoint (config-driven via configs/eval/default.yaml):
+python scripts/eval.py config                       # show resolved config + metric registry
+python scripts/eval.py leaderboard --all_regions    # == scripts/eval_leaderboard.py
+python scripts/eval.py single --model_path outputs/sft_merged --target_do gangwondo
+
 # Cross-run leaderboard — ranks SFT + every GRPO arm per region and overall by
 # reconstruction_bleu↑ (proxy-independent), with DFS, Pareto frontier, and
 # paired-bootstrap significance (Koehn 2004). Every metric shows its ↑/↓ direction.
+# Add --wandb_project ko-dialect to push per-region metric panels to W&B.
 python scripts/eval_leaderboard.py --all_regions --n 150
+
+# Quantization trade-off (quality × size × latency) for a finished model:
+python scripts/quantize_eval.py --model_path outputs/sft_merged --target_do gangwondo
+
+# Training throughput bench (unsloth vs DeepSpeed ZeRO-offload):
+python scripts/bench_train.py --backend unsloth --max_steps 20
 
 # Serve SFT + GRPO arms together (one base in VRAM, hot-swapped adapters) and compare:
 python scripts/serve_compare.py --text "밥 먹었니?" --target_do gangwondo
@@ -93,6 +105,11 @@ See [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) for the full tables. In brief:
   `grpo_500` is the most robust single model (on the frontier in every scope).
 - **Prosody (F0-marker) supervision is a content-fidelity regularizer**, not a dialectness
   lever — it significantly raises reconstruction_bleu without changing the dialect axes.
+  Marker scheme is now **K-ToBI-grounded** (Jun 2000 boundary tones), declination-aware,
+  with `<WAVE>` reactivated via F0 coefficient-of-variation and per-eojeol markers available.
+- **4-bit PTQ is a memory win, not a latency win on RTX 2060** — bitsandbytes NF4 cuts the
+  footprint 4× with no quality loss but runs ~2× *slower* (Turing dequant overhead); use
+  GGUF Q4_K_M for speed. See [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) §3–4.
 
 ## Citations
 
