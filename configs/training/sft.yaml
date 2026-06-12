@@ -25,6 +25,10 @@ eval_strategy: steps
 eval_steps: 500
 fp16: true
 bf16: false
+# --- training-optimization knobs (benchmark with scripts/bench_train.py) ---
+optim: adamw_torch            # paged_adamw_8bit shrinks optimizer state on 6GB
+gradient_checkpointing: false # true trades recompute for activation memory (unsloth self-manages)
+deepspeed: null               # e.g. configs/training/deepspeed_zero2_offload.json (use backend=bnb/hf, not unsloth)
 dataloader_num_workers: 0
 seed: 42
 num_train_samples: 150000

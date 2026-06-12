@@ -61,6 +61,14 @@ class SFTConfig:
     eval_strategy: str = "epoch"  # "no" | "steps" | "epoch"
     eval_steps: int = 500
     save_merged: bool = True  # also save full 16-bit weights so GRPO can load directly
+    # --- training-optimization knobs ---
+    # optim: "adamw_torch" (default) or "paged_adamw_8bit" to shrink optimizer state on 6GB.
+    optim: str = "adamw_torch"
+    # gradient_checkpointing trades recompute for activation memory (unsloth manages its own).
+    gradient_checkpointing: bool = False
+    # deepspeed: path to a ZeRO config json. Use with a non-unsloth backend (bnb/hf) — unsloth
+    # patches the model and does not compose with the DeepSpeed engine. Benchmark vs unsloth.
+    deepspeed: str | None = None
 
     def to_backend_config(self) -> BackendConfig:
         return BackendConfig(
@@ -219,6 +227,8 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
         eval_steps=cfg.eval_steps,
         fp16=cfg.fp16,
         bf16=cfg.bf16,
+        optim=cfg.optim,
+        gradient_checkpointing=cfg.gradient_checkpointing,
         dataloader_num_workers=cfg.dataloader_num_workers,
         max_length=cfg.max_seq_length,
         packing=packing,
@@ -226,6 +236,8 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
         assistant_only_loss=assistant_only_loss,
         seed=cfg.seed,
         report_to=cfg.report_to if cfg.report_to else "none",
+        # DeepSpeed only when a config is provided (else keep the plain single-GPU path).
+        **({"deepspeed": cfg.deepspeed} if cfg.deepspeed else {}),
         **sft_kwargs,
     )
 
