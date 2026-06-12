@@ -74,7 +74,7 @@ All CI jobs run on `ubuntu-latest` (no GPU). Jobs:
 
 1. **lint** — `ruff`, `black --check`, `isort --check`
 2. **test** — `pytest tests/ -x -q -m "not gpu"`
-3. **import-check** — `python -c "import kodialect"` (catches missing `__init__` exports)
+3. **import-check** — `python -c "import ko_dialect"` (catches missing `__init__` exports)
 
 CI fails → GitHub Action automatically opens an Issue tagged `ci-failure` with the workflow run link.
 
