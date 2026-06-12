@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from ko_dialect.evaluation.serving import percentile, summarize_latencies
+from ko_dialect.evaluation.serving import (
+    directory_size_mb,
+    format_tradeoff_table,
+    percentile,
+    quantization_tradeoff,
+    summarize_latencies,
+)
 
 
 def test_percentile_endpoints_and_interpolation():
@@ -46,3 +52,55 @@ def test_summarize_latencies_without_tokens_omits_throughput_tokens():
 def test_summarize_latencies_requires_data():
     with pytest.raises(ValueError):
         summarize_latencies([])
+
+
+def test_directory_size_mb_counts_files(tmp_path):
+    (tmp_path / "a.bin").write_bytes(b"x" * (1024 * 1024))
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "b.bin").write_bytes(b"y" * (512 * 1024))
+    assert directory_size_mb(str(tmp_path)) == 1.5
+    assert directory_size_mb(str(tmp_path / "a.bin")) == 1.0
+
+
+def test_quantization_tradeoff_computes_deltas_vs_baseline():
+    variants = [
+        {
+            "name": "fp16",
+            "size_mb": 1000.0,
+            "latency_ms_p50": 100.0,
+            "chrf": 50.0,
+            "copy_margin": -7.0,
+        },
+        {
+            "name": "bnb4",
+            "size_mb": 300.0,
+            "latency_ms_p50": 80.0,
+            "chrf": 48.5,
+            "copy_margin": -7.4,
+        },
+    ]
+    summary = quantization_tradeoff(variants, baseline="fp16")
+    fp16, bnb4 = summary["rows"]
+    assert "size_pct" not in fp16  # baseline carries no deltas
+    assert bnb4["size_pct"] == 30.0
+    assert bnb4["speedup"] == 1.25
+    assert bnb4["chrf_drop"] == 1.5
+    assert bnb4["copy_margin_drop"] == 0.4
+
+
+def test_format_tradeoff_table_renders_markdown():
+    summary = quantization_tradeoff(
+        [
+            {
+                "name": "fp16",
+                "size_mb": 1000.0,
+                "latency_ms_p50": 100.0,
+                "chrf": 50.0,
+                "copy_margin": -7.0,
+            }
+        ],
+        baseline="fp16",
+    )
+    table = format_tradeoff_table(summary)
+    assert table.startswith("| variant |")
+    assert "fp16" in table

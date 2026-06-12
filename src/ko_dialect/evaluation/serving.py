@@ -51,3 +51,57 @@ def summarize_latencies(
         out["total_new_tokens"] = total_tokens
         out["tokens_per_sec"] = round(total_tokens / total_time, 2) if total_time > 0 else 0.0
     return out
+
+
+def directory_size_mb(path: str) -> float:
+    """Total on-disk size (MB) of a model directory or single file."""
+    from pathlib import Path
+
+    p = Path(path)
+    if p.is_file():
+        total = p.stat().st_size
+    else:
+        total = sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+    return round(total / (1024 * 1024), 2)
+
+
+def quantization_tradeoff(variants: list[dict], baseline: str = "fp16") -> dict:
+    """Summarise a PTQ/quantization sweep as a quality × size × latency trade-off.
+
+    Each variant is ``{"name", "size_mb", "latency_ms_p50", "chrf", "copy_margin", ...}``
+    (the fields ``bench_serving.py`` already produces, plus ``size_mb``). Returns rows
+    annotated with deltas vs the named ``baseline`` variant (the unquantized fp16 model):
+    ``size_pct`` (← smaller is better), ``speedup`` (latency baseline/variant, ↑ better),
+    and ``chrf_drop`` / ``copy_margin_drop`` (quality lost to quantization, ↓ better) — so
+    the genuine PTQ question, "how much quality for how much size/latency", is answered in
+    one place. EXPERIMENTS §3: PTQ first, escalate to QAT only if PTQ degrades too much.
+    """
+    by_name = {v["name"]: v for v in variants}
+    base = by_name.get(baseline)
+    rows = []
+    for v in variants:
+        row = dict(v)
+        if base and v["name"] != baseline:
+            if base.get("size_mb"):
+                row["size_pct"] = round(100 * v.get("size_mb", 0) / base["size_mb"], 1)
+            if v.get("latency_ms_p50"):
+                row["speedup"] = round(base.get("latency_ms_p50", 0) / v["latency_ms_p50"], 2)
+            if base.get("chrf") is not None and v.get("chrf") is not None:
+                row["chrf_drop"] = round(base["chrf"] - v["chrf"], 3)
+            if base.get("copy_margin") is not None and v.get("copy_margin") is not None:
+                row["copy_margin_drop"] = round(base["copy_margin"] - v["copy_margin"], 3)
+        rows.append(row)
+    return {"baseline": baseline, "rows": rows}
+
+
+def format_tradeoff_table(summary: dict) -> str:
+    """Render :func:`quantization_tradeoff` output as a markdown table."""
+    header = "| variant | size_mb | size% | speedup | p50 ms | chrf | chrf_drop | copy_margin |"
+    lines = [header, "|---|---|---|---|---|---|---|---|"]
+    for r in summary["rows"]:
+        lines.append(
+            f"| {r['name']} | {r.get('size_mb', '—')} | {r.get('size_pct', '—')} | "
+            f"{r.get('speedup', '—')} | {r.get('latency_ms_p50', '—')} | "
+            f"{r.get('chrf', '—')} | {r.get('chrf_drop', '—')} | {r.get('copy_margin', '—')} |"
+        )
+    return "\n".join(lines)
