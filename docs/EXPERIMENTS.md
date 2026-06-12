@@ -83,19 +83,19 @@ See memory `prosody-sft-ab-verdict`.
 → `outputs/eval_logs/quantize_tradeoff_*.json`. Trade-off summary is the CPU-tested
 `evaluation.serving.quantization_tradeoff` (size%, speedup, chrf_drop vs the fp16 baseline).
 
-First signal (sft_merged, gangwon, n=24):
+sft_merged, gangwon (n=150, confirms an n=24 first signal):
 
 | variant | size | p50 latency | chrF | copy_margin |
 |---|---|---|---|---|
-| fp16 | 953 MB | 522 ms | 72.9 | −3.00 |
-| **bnb 4-bit (NF4)** | **238 MB (25%)** | **997 ms (0.52× — slower)** | 76.2 | −2.66 |
+| fp16 | 953 MB | 488 ms | 68.5 | −5.09 |
+| **bnb 4-bit (NF4)** | **238 MB (25%)** | **985 ms (0.50× — slower)** | 70.7 | −5.72 |
 
 **Verdict: 4-bit PTQ is a memory win, not a latency win on RTX 2060.** It cuts the
-footprint 4× with no quality loss (chrF/copy_margin within noise at n=24), but is ~2×
+footprint 4× with no quality loss (chrF is non-negative at both n=24 and n=150), but is ~2×
 *slower* — bitsandbytes 4-bit dequant overhead dominates for a 0.5B model without optimized
 Turing kernels. For actual speed, use the **GGUF Q4_K_M** path (llama.cpp,
 `scripts/export_gguf.py` + `bench_serving.py`). Escalate to QAT (`training.backend=qat`)
-only if a larger-n PTQ run shows real quality loss. (Caveat: n=24 — confirm at n≥300.)
+only if PTQ shows real quality loss — it does not here.
 
 ---
 
@@ -106,9 +106,17 @@ DeepSpeed ZeRO-2 + optimizer CPU-offload config in `configs/training/deepspeed_z
 (use `backend=bnb/hf` — unsloth patches the model and does not compose with the engine).
 
 Baseline (unsloth, bs=1, seq=256, 20 steps): **286 tok/s, 1.12 steps/s, peak VRAM 1284 MB**.
-On a single 6 GB GPU the CPU-offload transfer overhead is expected to lose to unsloth's
-fused kernels; the bench (`training.bench.compare_throughput`) settles it head-to-head.
-The DeepSpeed config exists mainly to be multi-GPU-ready.
+
+**Verdict on this RTX 2060 box: unsloth is the only training path that actually runs.**
+The head-to-head arms are *environment*-blocked, not just slower:
+- **DeepSpeed** installs but cannot initialize — no CUDA toolkit (`nvcc` absent), which its
+  JIT op builder requires. Ready for a machine with the toolkit / multiple GPUs.
+- **Vanilla bnb 4-bit LoRA training** trips the Turing `_amp_foreach_..._unscale` BF16 error
+  (fp16 grad-scaler vs BF16 adapter params) — the documented reason this project trains with
+  unsloth's 16-bit LoRA rather than a 4-bit backbone.
+
+So on a single 6 GB Turing GPU unsloth wins by default. The DeepSpeed config + bench
+(`training.bench.compare_throughput`) remain for a CUDA-toolkit/multi-GPU environment.
 
 ---
 

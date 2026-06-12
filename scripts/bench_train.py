@@ -56,6 +56,11 @@ def main(
         eval_strategy="no",
     )
     model, tokenizer = load_model_and_tokenizer(cfg)
+    # Cast stray bf16 tensors to fp16 (Turing has no native BF16) — mirrors sft_trainer.train
+    # so non-unsloth backends don't trip the fp16 grad-scaler.
+    for param in model.parameters():
+        if param.dtype == torch.bfloat16:
+            param.data = param.data.to(torch.float16)
     train_ds = load_from_disk(sft_dataset_path)["train"].select(
         range(max_steps * per_device_train_batch_size * gradient_accumulation_steps + 8)
     )
