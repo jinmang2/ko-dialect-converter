@@ -60,8 +60,9 @@ import os
 import sys
 import time
 import urllib.request
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any, Iterable, Iterator
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Small output helpers (no external deps — keep this script runnable anywhere).
@@ -128,7 +129,9 @@ def cmd_versions(_args: argparse.Namespace) -> None:
         # Locate the wandb-core binary: modern wandb ships a Go service that
         # actually does the uploading. If it's missing, logging silently no-ops.
         core = Path(wandb.__file__).parent / "bin" / "wandb-core"
-        _kv("wandb-core binary", f"{core} ({'present' if core.exists() else 'MISSING'})")
+        _kv(
+            "wandb-core binary", f"{core} ({'present' if core.exists() else 'MISSING'})"
+        )
     except Exception as exc:  # pragma: no cover - environment dependent
         _kv("wandb", f"IMPORT FAILED: {exc!r}")
     try:
@@ -161,7 +164,9 @@ def _find_wandb_file(run_dir: str) -> str | None:
     # Accept either the run dir, the parent `wandb/` dir, or a direct .wandb file
     if p.is_file() and p.suffix == ".wandb":
         return str(p)
-    hits = sorted(glob.glob(str(p / "*.wandb"))) or sorted(glob.glob(str(p / "**" / "*.wandb")))
+    hits = sorted(glob.glob(str(p / "*.wandb"))) or sorted(
+        glob.glob(str(p / "**" / "*.wandb"))
+    )
     return hits[0] if hits else None
 
 
@@ -229,7 +234,10 @@ def cmd_local(args: argparse.Namespace) -> None:
             metrics = {
                 k: v
                 for k, v in row.items()
-                if any(s in k for s in ("loss", "acc", "f1", "global_step", "lr", "learning_rate"))
+                if any(
+                    s in k
+                    for s in ("loss", "acc", "f1", "global_step", "lr", "learning_rate")
+                )
             }
             print(f"  history[{shown}] {metrics or row}")
             shown += 1
@@ -246,7 +254,9 @@ def cmd_local(args: argparse.Namespace) -> None:
         print("     (wandb never received metrics — check report_to / wandb.log).")
     if counts.get("output_raw", 0) > 50_000:
         print(f"\n  NOTE: {counts['output_raw']:,} console records — tqdm/progress-bar")
-        print("        spam. Unrelated to metrics; set disable_tqdm=True / WANDB_CONSOLE=off.")
+        print(
+            "        spam. Unrelated to metrics; set disable_tqdm=True / WANDB_CONSOLE=off."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -384,8 +394,7 @@ def cmd_account(args: argparse.Namespace) -> None:
     if args.entity:
         gql(
             f"entity({args.entity})",
-            'query { entity(name:"%s") { name available storageBytes computeHours } }'
-            % args.entity,
+            f'query {{ entity(name:"{args.entity}") {{ name available storageBytes computeHours }} }}',
         )
 
 
@@ -512,9 +521,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("versions", help="wandb/transformers versions + authenticity").set_defaults(
-        func=cmd_versions
-    )
+    sub.add_parser(
+        "versions", help="wandb/transformers versions + authenticity"
+    ).set_defaults(func=cmd_versions)
 
     sp = sub.add_parser("local", help="parse a local .wandb log")
     sp.add_argument("run_dir", help="run dir, wandb/ dir, or a *.wandb file")
@@ -535,15 +544,23 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--entity", help="entity name to inspect storage/usage for")
     sp.set_defaults(func=cmd_account)
 
-    sub.add_parser("status", help="fetch W&B status page incidents").set_defaults(func=cmd_status)
+    sub.add_parser("status", help="fetch W&B status page incidents").set_defaults(
+        func=cmd_status
+    )
 
     sp = sub.add_parser("probe", help="live logging probe + read-back")
     sp.add_argument("--entity", default=None)
     sp.add_argument("--project", default="wandb-doctor")
     sp.add_argument("--points", type=int, default=5)
-    sp.add_argument("--wait", type=int, default=12, help="seconds to wait before read-back")
-    sp.add_argument("--relogin", action="store_true", help="force fresh login from ~/.netrc")
-    sp.add_argument("--no-delete", dest="delete", action="store_false", help="keep the run")
+    sp.add_argument(
+        "--wait", type=int, default=12, help="seconds to wait before read-back"
+    )
+    sp.add_argument(
+        "--relogin", action="store_true", help="force fresh login from ~/.netrc"
+    )
+    sp.add_argument(
+        "--no-delete", dest="delete", action="store_false", help="keep the run"
+    )
     sp.set_defaults(func=cmd_probe, delete=True)
 
     sp = sub.add_parser("diagnose", help="run the full funnel and print a verdict")
