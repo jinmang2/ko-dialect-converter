@@ -61,8 +61,8 @@ def test_add_sentence_final_marker_before_punctuation():
 
 
 def test_prosody_policy_is_versioned():
-    assert PROSODY_MARKER_POLICY["version"] == 1
-    assert PROSODY_MARKER_POLICY["up_threshold_delta_ratio"] == 0.15
+    assert PROSODY_MARKER_POLICY["version"] == 2
+    assert PROSODY_MARKER_POLICY["up_threshold_delta_ratio"] == 0.05
     assert PROSODY_MARKER_POLICY["placement"].startswith("before")
 
 

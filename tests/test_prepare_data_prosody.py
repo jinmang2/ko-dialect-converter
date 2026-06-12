@@ -32,9 +32,10 @@ def test_summarize_intonation_adds_range_and_marker():
 
 
 def test_prosody_marker_classification_order():
-    assert prosody_marker({"f0_delta": -0.2, "f0_range": 80.0}) == "<DOWN>"
-    assert prosody_marker({"f0_delta": 0.0, "f0_range": 80.0}) == "<WAVE>"
-    assert prosody_marker({"f0_delta": 0.0, "f0_range": 10.0}) == "<KEEP>"
+    # v2: UP > DOWN > WAVE(cv) > KEEP precedence, declination-aware
+    assert prosody_marker({"f0_delta": -0.5, "f0_mean": 100, "f0_std": 50}) == "<DOWN>"
+    assert prosody_marker({"f0_delta": 0.0, "f0_mean": 100, "f0_std": 40}) == "<WAVE>"
+    assert prosody_marker({"f0_delta": 0.0, "f0_mean": 100, "f0_std": 10}) == "<KEEP>"
     assert prosody_marker(None) is None
 
 

@@ -30,7 +30,8 @@ def test_load_raw_manifest_reads_adjacent_sidecar(tmp_path):
 
 
 def test_validate_prosody_manifest_requires_matching_policy():
-    validate_prosody_manifest({"prosody_marker_policy": {"version": 1}})
+    # current policy is v2; a v2-derived manifest validates
+    validate_prosody_manifest({"prosody_marker_policy": {"version": 2}})
 
     with pytest.raises(FileNotFoundError, match="requires a raw dataset manifest"):
         validate_prosody_manifest(None)
@@ -38,5 +39,7 @@ def test_validate_prosody_manifest_requires_matching_policy():
     with pytest.raises(ValueError, match="prosody_marker_policy"):
         validate_prosody_manifest({"prosody_marker_policy": None})
 
+    # markers derived under a different policy are rejected — guards against training
+    # v2 code on v1-derived markers (and vice versa)
     with pytest.raises(ValueError, match="does not match"):
-        validate_prosody_manifest({"prosody_marker_policy": {"version": 999}})
+        validate_prosody_manifest({"prosody_marker_policy": {"version": 1}})

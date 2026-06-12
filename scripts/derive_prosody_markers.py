@@ -7,9 +7,9 @@ predates the marker stage, so it has no ``prosody_marker`` column (which
 AI-Hub JSONs (~600k rows), this maps ``prosody_marker(prosody)`` over the existing
 summary and writes a new raw dataset + the manifest sidecar that stage0 validates.
 
-Caveat: the existing ``prosody`` summary was built before ``f0_range`` was added, so the
-``<WAVE>`` class can never fire here — markers are <UP>/<DOWN>/<KEEP>/None only. Re-parse
-from source if you need <WAVE>. The manifest records this under ``derived_from``.
+As of marker policy v2 all four classes fire from the stored summary: <WAVE> keys on the
+F0 coefficient of variation (f0_std/f0_mean), which is present, instead of the absent
+f0_range. The manifest records the active policy + version under ``prosody_marker_policy``.
 
 Usage:
     python scripts/derive_prosody_markers.py \
@@ -61,7 +61,7 @@ def main(
         "derived_from": {
             "raw": str(raw),
             "method": "mapped prosody_marker(prosody) over existing F0 summary",
-            "note": "existing prosody summary lacks f0_range -> no <WAVE> markers",
+            "note": "v2 policy: <WAVE> keys on f0_std/f0_mean (cv); all four classes fire",
         },
         "marker_distribution": dist,
     }
