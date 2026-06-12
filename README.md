@@ -107,6 +107,8 @@ See [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) for the full tables. In brief:
   lever — it significantly raises reconstruction_bleu without changing the dialect axes.
   Marker scheme is now **K-ToBI-grounded** (Jun 2000 boundary tones), declination-aware,
   with `<WAVE>` reactivated via F0 coefficient-of-variation and per-eojeol markers available.
+  A v2 A/B confirms this holds across schemes: the principled K-ToBI markers replicate the
+  v1 recon_bleu gain (significant, both regions) but **do not** turn it into a dialect gain.
 - **4-bit PTQ is a memory win, not a latency win on RTX 2060** — bitsandbytes NF4 cuts the
   footprint 4× with no quality loss but runs ~2× *slower* (Turing dequant overhead); use
   GGUF Q4_K_M for speed. See [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) §3–4.

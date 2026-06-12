@@ -58,6 +58,25 @@ It significantly raises reconstruction_bleu in both regions while every dialect-
 axis stays flat. Predicting F0 markers makes the model translate more faithfully, not more
 dialectally.
 
+### v2 (K-ToBI) A/B — does a principled marker scheme change the verdict? No.
+
+`sft_control_s15` vs `sft_prosody_v2` (K-ToBI v2 markers, §"Prosody marker scheme"), n=150,
+markers stripped before scoring → `outputs/eval_logs/prosody_ab_v2.log`.
+
+| metric | gangwondo Δ(pros−ctrl) | gyeongsangdo Δ(pros−ctrl) |
+|---|---|---|
+| **reconstruction_bleu↑** | **+2.47** (paired +2.20, p=0.008 ▲) | **+4.80** (paired +5.65, p<0.001 ▲) |
+| copy_margin↑ | −0.33 | −1.03 |
+| tdr↑ / dfs↑ / eojeol↑ | flat → slightly negative | flat → slightly negative |
+
+**The K-ToBI v2 markers replicate the v1 story, they do not beat it.** Recon_bleu rises
+significantly in both regions while every dialect axis stays flat-to-negative — so a more
+linguistically-principled marker scheme is *still* a fidelity regularizer, not a dialectness
+lever. v2's gains are if anything slightly *smaller* than v1's (+2.5/+4.8 vs +3.9/+6.4), and
+copy_margin drifts a touch more negative (the copy-bias signature). Conclusion holds across
+two independent marker schemes: predicting F0 markers buys faithfulness, not dialectalness.
+(Caveat: control and prosody arms are separate 15k/1ep runs, not row-identical as in v1.)
+
 Caveats: recon_bleu↑ with copy_margin slightly↓ is the copy-bias signature (a source-faithful
 output back-translates more easily) — the small copy_margin move suggests it is a minor
 contributor, but the qualitative gate is needed to confirm. First signal only: 15k/1ep,
