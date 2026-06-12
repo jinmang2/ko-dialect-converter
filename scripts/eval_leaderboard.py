@@ -160,8 +160,13 @@ def main(
     dataset_path: str = "outputs/datasets/grpo",
     max_new_tokens: int = 64,
     out_dir: str = "outputs/eval_logs",
+    wandb_project: str | None = None,
 ):
-    """Evaluate every run per region + overall and emit a ranked, annotated leaderboard."""
+    """Evaluate every run per region + overall and emit a ranked, annotated leaderboard.
+
+    Pass ``--wandb_project ko-dialect`` to also push per-region, per-run metric panels to
+    W&B (eval/<region>/<run>/<metric>); omit it for the plain local run.
+    """
     specs = _resolve_specs(runs, base, include_sft)
     if not specs:
         raise SystemExit("No runs to evaluate (no outputs/grpo* adapters found).")
@@ -169,6 +174,16 @@ def main(
 
     ds_valid = load_from_disk(dataset_path)["valid"]
     regions = _resolve_regions(target_do, all_regions, ds_valid)
+
+    if wandb_project:
+        import wandb
+
+        wandb.init(
+            project=wandb_project,
+            name=f"leaderboard_{'_'.join(regions)}",
+            job_type="eval",
+            config={"n": n, "select_by": select_by, "runs": [s.tag for s in specs]},
+        )
     logger.info("Runs: %s", ", ".join(s.tag for s in specs))
     logger.info("Regions: %s", ", ".join(regions))
 
@@ -234,6 +249,11 @@ def main(
         payload["significance_vs_baseline"] = significance
         per_region_rows[region] = ranked
         per_region_payload[region] = payload
+        if wandb_project:
+            from ko_dialect.monitoring import log_panels, metrics_panel
+
+            for tag, metrics in ranked:
+                log_panels(metrics_panel(metrics, f"eval/{region}/{tag}"))
         _print_scope(
             f"LEADERBOARD — {region} std2dia, n={len(prompts)}, by {select_by}↑",
             ranked,
@@ -330,6 +350,11 @@ def main(
     md_path = out_root / f"leaderboard_{scope}_{ts}.md"
     md_path.write_text("\n".join(md_sections) + "\n", "utf-8")
     print(f"\nWrote {json_path}\n      {md_path}")
+
+    if wandb_project:
+        import wandb
+
+        wandb.finish()
 
 
 if __name__ == "__main__":

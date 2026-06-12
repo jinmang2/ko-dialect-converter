@@ -36,8 +36,13 @@ def main(
     raw: str = "outputs/dialect_raw_new",
     out: str = "outputs/dialect_raw_prosody",
     num_proc: int = 4,
+    wandb_project: str | None = None,
 ) -> None:
-    """Derive prosody_marker from the prosody column and save a marked raw dataset."""
+    """Derive prosody_marker from the prosody column and save a marked raw dataset.
+
+    Pass ``--wandb_project ko-dialect`` to log the marker distribution per split as W&B
+    panels (so a collapse to one boundary tone is visible before any training).
+    """
     ds = load_dialect_dataset(raw)
     if "prosody" not in next(iter(ds.values())).column_names:
         raise SystemExit(f"{raw} has no 'prosody' column to derive markers from.")
@@ -47,11 +52,24 @@ def main(
 
     marked = ds.map(add_marker, batched=True, num_proc=num_proc, desc="prosody_marker")
 
+    if wandb_project:
+        import wandb
+
+        wandb.init(project=wandb_project, job_type="data", name=f"derive_prosody_{Path(out).name}")
+
     dist = {}
     for split in marked:
         c = Counter(marked[split]["prosody_marker"])
         dist[split] = {str(k): v for k, v in c.items()}
         logger.info("[%s] marker distribution: %s", split, dist[split])
+        if wandb_project:
+            from ko_dialect.monitoring import log_panels, marker_distribution_panel
+
+            log_panels(marker_distribution_panel(dict(c), prefix=f"prosody/{split}"))
+    if wandb_project:
+        import wandb
+
+        wandb.finish()
 
     out_path = Path(out)
     marked.save_to_disk(str(out_path))
