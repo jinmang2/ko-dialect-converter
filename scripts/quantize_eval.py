@@ -140,6 +140,11 @@ def main(
         torch.cuda.empty_cache()
 
     summary = quantization_tradeoff(variants, baseline="fp16")
+    # Identify the run so report.py can distinguish (and label) quantization benches on
+    # different models/regions instead of collapsing them by their shared variant names.
+    summary["model"] = model_path
+    summary["target_do"] = target_do
+    summary["n_samples"] = cfg.n_samples
     print(format_tradeoff_table(summary))
     if output_file:
         Path(output_file).parent.mkdir(parents=True, exist_ok=True)

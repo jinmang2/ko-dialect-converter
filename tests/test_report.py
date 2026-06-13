@@ -43,6 +43,17 @@ def test_render_quantization_lists_variants():
     assert "baseline: fp16" in md and "fp16" in md and "1024" in md
 
 
+def test_render_quantization_shows_model_and_region_when_present():
+    data = {
+        "baseline": "fp16",
+        "model": "outputs/sft_merged",
+        "target_do": "gangwondo",
+        "rows": [{"name": "fp16", "size_mb": 1024.0}],
+    }
+    md = render_quantization(data)
+    assert "outputs/sft_merged" in md and "[gangwondo]" in md
+
+
 def test_build_report_groups_and_skips_unknown():
     artifacts = [
         ("leaderboard", {"target_do": "x", "ranking": [], "rows": {}}),

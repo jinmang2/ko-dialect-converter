@@ -103,6 +103,11 @@ def build_sft_dataset(
                 (sample["standard"], dialect_text, "std2dia"),
             ]
             if both_directions:
+                # KNOWN ISSUE: with a prosody_mode, the dia2std SOURCE carries markers the
+                # model never sees at dia2std inference (real dialect input is unmarked), so
+                # that direction trains on an out-of-distribution source. std2dia (the
+                # generation direction the prosody experiments evaluate) is unaffected.
+                # Left as-is to match the established sentence-mode behaviour.
                 pairs.append((dialect_text, sample["standard"], "dia2std"))
 
             for source, target, direction in pairs:

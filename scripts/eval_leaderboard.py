@@ -191,6 +191,11 @@ def main(
     if mlflow_experiment:
         import mlflow
 
+        # End any run left active by a previous in-process call (e.g. re-entry via
+        # scripts/eval.py, or a prior call that raised) so start_run can't hit
+        # "Run already active". On process exit MLflow ends the run via its atexit hook.
+        if mlflow.active_run() is not None:
+            mlflow.end_run()
         mlflow.set_experiment(mlflow_experiment)
         mlflow.start_run(run_name=run_name)
         mlflow.log_params({"n": n, "select_by": select_by, "n_runs": len(specs)})

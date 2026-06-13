@@ -29,8 +29,9 @@ def _scope_key(kind: str, data: dict) -> str:
     if kind == "leaderboard":
         return f"leaderboard:{data.get('target_do', '?')}"
     if kind == "quantization":
-        names = "_".join(r.get("name", "") for r in data.get("rows", []))
-        return f"quantization:{names}"
+        # Prefer the explicit run identity; fall back to variant names for older artifacts.
+        model = data.get("model") or "_".join(r.get("name", "") for r in data.get("rows", []))
+        return f"quantization:{model}:{data.get('target_do', '?')}"
     if kind == "classifier":
         return f"classifier:{data.get('checkpoint', '?')}:{data.get('split', '?')}"
     return kind

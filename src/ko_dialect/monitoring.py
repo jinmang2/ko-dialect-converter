@@ -13,6 +13,7 @@ The builders are pure and unit-tested; ``log_panels`` is the only side-effecting
 
 from __future__ import annotations
 
+import math
 from typing import Any
 
 
@@ -32,12 +33,17 @@ def marker_distribution_panel(counts: dict[str, int], prefix: str = "prosody") -
 
 
 def metrics_panel(metrics: dict[str, Any], section: str) -> dict[str, float]:
-    """Flatten a metric dict into ``{section}/<metric>`` numeric panels (drops non-numbers)."""
+    """Flatten a metric dict into ``{section}/<metric>`` numeric panels.
+
+    Drops non-numbers, booleans, and non-finite values (NaN/Inf) — MLflow's ``log_metrics``
+    raises on NaN/Inf, so a degenerate metric must not reach a backend through what callers
+    treat as best-effort logging.
+    """
     panel: dict[str, float] = {}
     for k, v in metrics.items():
-        if isinstance(v, bool):
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
             continue
-        if isinstance(v, (int, float)):
+        if math.isfinite(v):
             panel[f"{section}/{k}"] = float(v)
     return panel
 

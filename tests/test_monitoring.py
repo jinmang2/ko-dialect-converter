@@ -34,6 +34,14 @@ def test_metrics_panel_flattens_numbers_only():
     assert panel == {"eval/gangwondo/copy_margin": -7.4, "eval/gangwondo/tdr": 0.62}
 
 
+def test_metrics_panel_drops_non_finite():
+    # NaN/Inf must not reach a backend — MLflow.log_metrics raises on them.
+    panel = metrics_panel(
+        {"chrf": float("nan"), "bleu": float("inf"), "tdr": 0.5}, section="eval/x"
+    )
+    assert panel == {"eval/x/tdr": 0.5}
+
+
 def test_log_panels_noop_without_active_run():
     # No wandb/mlflow run in the test process => safe no-op, returns False (never raises).
     assert wandb_run_active() is False

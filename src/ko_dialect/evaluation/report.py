@@ -62,8 +62,13 @@ def render_leaderboard(data: dict) -> str:
 
 def render_quantization(data: dict) -> str:
     baseline = data.get("baseline", "?")
+    scope = ""
+    if data.get("model"):
+        scope = f" — `{data['model']}`"
+        if data.get("target_do"):
+            scope += f" [{data['target_do']}]"
     lines = [
-        f"#### Quantization trade-off (baseline: {baseline})",
+        f"#### Quantization trade-off{scope} (baseline: {baseline})",
         "",
         "| variant | " + " | ".join(_QUANT_COLS) + " |",
         "|---|" + "---|" * len(_QUANT_COLS),
