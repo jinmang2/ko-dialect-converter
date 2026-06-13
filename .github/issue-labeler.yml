@@ -1,0 +1,33 @@
+# Issue keyword auto-labeler
+# Used by .github/workflows/issue-labeler.yml (github/issue-labeler@v3)
+# Keys = label names, values = list of regex patterns matched against title + body
+
+bug:
+  - "(?i)(bug|error|exception|traceback|fail|crash|오류|에러|버그)"
+
+oom:
+  - "(?i)(oom|out.of.memory|cuda.out|메모리|vram)"
+
+data:
+  - "(?i)(data|dataset|방언|aihub|전처리|prepare|json|zip)"
+
+training:
+  - "(?i)(train|학습|qlora|lora|sft|finetuning|파인튜닝|epoch|batch|gradient)"
+
+model:
+  - "(?i)(model|qwen|weight|checkpoint|quantiz|양자화|bf16|fp16|int4|int8)"
+
+evaluation:
+  - "(?i)(eval|bleu|chrf|metric|평가|score)"
+
+serving:
+  - "(?i)(gguf|serve|serving|inference|추론|ollama|llama.cpp|export)"
+
+ci-failure:
+  - "(?i)(ci fail|ci failure|workflow fail|action fail|빌드 실패)"
+
+enhancement:
+  - "(?i)(feature|enhance|improve|추가|개선|제안|support)"
+
+experiment:
+  - "(?i)(experiment|실험|run|wandb|result|결과)"

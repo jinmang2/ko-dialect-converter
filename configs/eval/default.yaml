@@ -1,0 +1,23 @@
+# Shared evaluation defaults (see ko_dialect.evaluation.config.EvalConfig).
+# scripts/eval.py and the specialised eval scripts read these; CLI flags override per-field.
+
+# Models
+base_model: Qwen/Qwen2.5-0.5B-Instruct      # fp16 base for LoRA adapters (RTX 2060, no bf16)
+classifier_path: outputs/classifier_clean   # TextCNN dialect classifier (GRPO style reward / tdr)
+cls_tokenizer_name: Qwen/Qwen2.5-0.5B-Instruct
+
+# Data
+raw_dataset_path: outputs/dialect_raw_new   # original dialect Arrow (gold references)
+runs_dir: outputs                           # where sft_merged / grpo* run dirs live
+split: valid
+
+# Decoding / sampling
+n_samples: 150          # per region; reliable paired-bootstrap significance wants >= ~300
+batch_size: 16          # prompts per forward pass; 16-32 fits a 6GB RTX 2060
+max_new_tokens: 64
+
+# Scope
+regions: [gangwondo, gyeongsangdo]   # jeju/jeolla/chungcheong added once their data + labels land
+
+# Report columns; empty => full metric_registry order with direction arrows
+metrics: []

@@ -1,0 +1,4 @@
+name: mlflow
+report_to:
+  - mlflow
+tracking_uri: mlruns

@@ -1,0 +1,24 @@
+defaults:
+  - training: grpo
+  - logger: disabled
+  - _self_
+
+data:
+  grpo_dataset_path: outputs/datasets/grpo
+  # Best classifier = the GRPO reward model. classifier_clean is the denoised-data run
+  # (macro-F1 ~0.95); its root dir holds the load_best_model_at_end checkpoint.
+  classifier_path: outputs/classifier_clean
+  # Stage-1 SFT *merged 16-bit* weights (a standalone model, not a bare adapter dir).
+  # Build with scripts/merge_sft_lora.py if outputs/sft_merged is missing.
+  base_model_path: outputs/sft_merged
+  cls_tokenizer_name: Qwen/Qwen2.5-0.5B-Instruct
+
+experiment:
+  name: ko-dialect-grpo
+  run_name: null
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}

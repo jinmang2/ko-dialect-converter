@@ -1,0 +1,71 @@
+# Backend / precision — 2060-safe default is unsloth 16-bit LoRA (NOT 4-bit).
+# Measured on RTX 2060 (Turing SM7.5, 6GB), trl 1.5.1, unsloth 2026.6.1:
+#   * backend=hf full fine-tune  -> "Attempting to unscale FP16 gradients" + OOM (AdamW
+#     fp32 states ~4GB exceed 6GB). Do not use on this GPU.
+#   * load_in_4bit=true (QLoRA)  -> WORKS but ~146 s/step: bnb 4-bit dequantises every
+#     matmul per generated token and Turing has no fast 4-bit kernel. Infeasible for GRPO.
+#   * load_in_4bit=false (16-bit LoRA) -> ~3.4 s/step (~44x faster), peak VRAM ~2.7GB.  <-- use this
+# For Colab/Ampere you can add use_vllm=true (needs a TRL-supported vLLM, 0.12–0.18).
+backend: unsloth  # hf | unsloth | bnb | loftq | awq | gptq
+# Positional budget for prompt + completion. Dialect prompts are short (median ~73 tok)
+# but have a thin tail to ~520; 512 covers 99.98% and stage3 filters the rare overflow.
+# Too-small a value crashes unsloth with a 4-D attention-mask size mismatch, because
+# trl 1.5.1 no longer truncates prompts (max_prompt_length was removed).
+max_seq_length: 512
+dtype: fp16
+load_in_4bit: false  # 16-bit LoRA on Turing; flip to true only on Ampere+ w/ fast 4-bit kernels
+use_vllm: false      # vLLM 0.22 in this env is outside TRL 1.5.1's supported 0.12–0.18 range
+apply_lora: true     # train LoRA adapters only (8.8M / 512M params); base stays frozen
+lora_r: 16
+lora_alpha: 32
+lora_dropout: 0.05
+output_dir: outputs/grpo
+num_train_epochs: 1
+max_steps: -1  # -1 = full epoch; set a positive cap for smoke/convergence probes
+per_device_train_batch_size: 4  # 16-bit LoRA leaves headroom; must be divisible by num_generations
+gradient_accumulation_steps: 4
+learning_rate: 5.0e-6
+num_generations: 4
+# KL-to-SFT weight. Raised 0.04 -> 0.1 after the 500-step run over-optimized the
+# classifier (TDR up past the gold's own TDR) while chrF/BLEU vs gold *dropped* ~9-11
+# pts — i.e. it drifted from the faithful SFT outputs. A stronger KL anchor keeps the
+# policy near SFT (whose chrF is the ceiling we were falling below).
+beta: 0.1
+# DAPO Clip-Higher: allow good tokens to grow a bit more than they can shrink (anti
+# entropy-collapse). mask truncated completions so token-cap cutoffs don't pollute grads.
+epsilon: 0.2
+epsilon_high: 0.28
+mask_truncated_completions: true
+max_new_tokens: 64  # gold targets are short; a high cap invites padding/verbosity hacking
+# NOTE: trl 1.5.1 GRPOConfig removed `max_prompt_length`; passing it raises TypeError.
+# Prompts here are short (dialect sentences), so prompt truncation is not needed.
+fp16: true
+bf16: false
+# Reward aggregation: "weighted" (Arm0 control, TRL sum-then-normalize) | "mo_grpo"
+# (Arm1, per-objective z-norm then sum, arXiv:2509.22047) | "hm" (harmonic-mean floor).
+# Must be present here so Hydra (struct mode) allows experiment/CLI overrides.
+aggregation: weighted
+logging_steps: 20
+save_steps: 200
+seed: 42
+# Reward set: each {name, weight}. Names resolve via rewards.REWARD_REGISTRY.
+# `length` is enabled by default: the convergence probe showed completions repeatedly
+# pinned at max_new_tokens (verbosity hacking), which this DAPO-style soft overlong
+# penalty counters. Add `- {name: edit, weight: 0.3}` once style+content are stable.
+# Rebalanced after the over-optimization finding (see beta note). style alone is an
+# unbounded "move away from standard" push, which the policy games by exaggerating /
+# wrong-region dialect at the cost of fidelity. So demote style and let the fidelity
+# anchors dominate: content (chrF vs gold) + edit (rewards changing exactly the gold
+# dialect eojeols, not wholesale drift). length stays as the verbosity guardrail.
+rewards:
+  - {name: style, weight: 0.5}
+  - {name: content, weight: 1.0}
+  - {name: edit, weight: 0.5}
+  - {name: length, weight: 0.2}
+use_edit_reward: false  # legacy shim: appends edit reward if `rewards` is unset
+# Rescale each reward to [0,1] before weighting (r_style is natively [-1,1]); makes the
+# weights above the only mixing knob, so style can't dominate by scale. See REWARD_OUTPUT_RANGES.
+normalize_rewards: true
+# `length` reward (soft overlong penalty) tuning, relative to gold target length.
+length_max_ratio: 1.5
+length_tolerance: 0.2

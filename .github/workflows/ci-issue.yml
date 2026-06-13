@@ -1,0 +1,63 @@
+name: Auto-Issue on CI Failure
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  issues: write
+
+jobs:
+  create-issue:
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for existing open CI failure issue
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'ci-failure',
+              state: 'open',
+            });
+            return issues.data.length > 0 ? 'exists' : 'none';
+          result-encoding: string
+
+      - name: Create CI failure issue
+        if: steps.check.outputs.result == 'none'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${run.id}`;
+            const sha = run.head_sha.slice(0, 7);
+            const branch = run.head_branch;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `[CI Failure] ${run.name} failed on \`${branch}\` @ ${sha}`,
+              body: [
+                '## CI Failure Detected',
+                '',
+                `| Field | Value |`,
+                `|---|---|`,
+                `| Workflow | ${run.name} |`,
+                `| Branch | \`${branch}\` |`,
+                `| Commit | \`${sha}\` |`,
+                `| Run | [View logs](${runUrl}) |`,
+                '',
+                '## Next Steps',
+                '- [ ] 실패 로그 확인',
+                '- [ ] 원인 파악 및 수정',
+                '- [ ] 수정 PR 연결',
+                '',
+                '_This issue was created automatically by the CI failure workflow._',
+              ].join('\n'),
+              labels: ['ci-failure', 'bug'],
+            });

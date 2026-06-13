@@ -1,0 +1,41 @@
+# @package _global_
+# Arm 1 (proposed): MO-GRPO aggregation (arXiv:2509.22047) over the new reward axes.
+# Per-objective z-normalize within each prompt group, then sum — removes the high-variance
+# style-axis domination that drove reward-hacking in the baseline (plan §5 Arm1, §8, §11).
+# Run side-by-side with Arm 0 (configs/training/grpo.yaml, weighted sum — left UNCHANGED
+# as control) and judge via the proxy-independent gate (plan §3, AC1/AC4).
+defaults:
+  - override /logger: wandb
+
+experiment:
+  name: ko-dialect-grpo
+  run_name: grpo-arm1-mo_grpo
+
+training:
+  # MO-GRPO: MOGRPOTrainer forces multi_objective_aggregation="normalize_then_sum" +
+  # scale_rewards="none" so each objective is unit-variance within its group before summation.
+  aggregation: mo_grpo
+  beta: 0.1
+  num_train_epochs: 1
+  # 6GB-safe batch: num_gen=4 / bs=4 / accum=4 (global batch 16) — the proven-fit config
+  # (bs=4 peaked ~5.3GB at seq512). MO-GRPO only needs whole groups (bs % num_gen == 0) and
+  # num_gen>=2 for a per-objective std; num_gen=8/bs=8 (plan §11-M3) is the aspirational
+  # config gated by a VRAM smoke — it OOMs on this 6GB card, so it is intentionally not set.
+  num_generations: 4
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  # Reward axes (registered by the rewards module): style (demoted), copy_margin as the
+  # copy-debiased content anchor (plan §3 A3), edit precision (collateral-damage guard) +
+  # edit recall (target transformation). Weights mirror plan §11-M1 (style 0.5 / content 1.0
+  # / edit 1.0 split across precision+recall). fluency is implemented+registered but OMITTED
+  # here: it needs a frozen ref-LM forward per step (ref_model wiring + ~1GB) that is unsafe
+  # on this 6GB card during num_gen training — enable once a ref-LM smoke confirms headroom.
+  rewards:
+    - {name: style, weight: 0.5}
+    - {name: copy_margin, weight: 1.0}
+    - {name: edit_precision, weight: 0.5}
+    - {name: edit_recall, weight: 0.5}
+  # MO-GRPO normalizes each objective per-group itself, so the pre-weighting [0,1] rescale
+  # used by the weighted-sum control is unnecessary here (and weights still set relative
+  # contribution after normalization). Keep it on for a like-for-like axis basis.
+  normalize_rewards: true

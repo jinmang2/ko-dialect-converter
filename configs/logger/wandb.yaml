@@ -1,0 +1,7 @@
+name: wandb
+report_to:
+  - wandb
+project: ko-dialect
+entity: null
+tags: []
+notes: null

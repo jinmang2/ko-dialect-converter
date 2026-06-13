@@ -1,0 +1,61 @@
+# PR auto-labeler — maps changed file paths to labels
+# Used by .github/workflows/labeler.yml (actions/labeler@v5)
+
+data:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/ko_dialect/data/**"
+      - "scripts/prepare_data.py"
+      - "scripts/stage0_build_datasets.py"
+      - "data/**"
+
+model:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/ko_dialect/models/**"
+      - "src/ko_dialect/rewards/**"
+
+training:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/ko_dialect/training/**"
+      - "scripts/stage1_sft.py"
+      - "scripts/stage2_train_classifier.py"
+      - "scripts/stage3_grpo.py"
+      - "configs/**"
+
+evaluation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/ko_dialect/evaluation/**"
+      - "scripts/eval_leaderboard.py"
+      - "scripts/evaluate.py"
+
+serving:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "src/ko_dialect/export/**"
+      - "scripts/serve_compare.py"
+      - "scripts/bench_serving.py"
+      - "scripts/export_gguf.py"
+      - "scripts/push_to_hub.py"
+
+ci:
+  - changed-files:
+    - any-glob-to-any-file:
+      - ".github/**"
+      - "pyproject.toml"
+      - ".pre-commit-config.yaml"
+
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "*.md"
+      - "docs/**"
+      - "AGENTS.md"
+      - "CLAUDE.md"
+
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - "tests/**"
