@@ -19,32 +19,40 @@ from __future__ import annotations
 import fire
 
 
+def _sibling_main(module_filename: str):
+    """Load ``main`` from a sibling script by explicit path.
+
+    Avoids relying on ``scripts/`` being ``sys.path[0]`` and the name collision between
+    ``scripts/evaluate.py`` and the HF ``evaluate`` PyPI package (a declared dependency).
+    """
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parent / module_filename
+    spec = importlib.util.spec_from_file_location(f"_eval_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.main
+
+
 class Eval:
     """Evaluation commands (see module docstring)."""
 
     def single(self, **kwargs):
         """Single-model metrics (TDR/DFS/eojeol + surface). Wraps scripts/evaluate.py."""
-        from evaluate import main
-
-        return main(**kwargs)
+        return _sibling_main("evaluate.py")(**kwargs)
 
     def leaderboard(self, **kwargs):
         """Cross-run per-region + overall leaderboard. Wraps scripts/eval_leaderboard.py."""
-        from eval_leaderboard import main
-
-        return main(**kwargs)
+        return _sibling_main("eval_leaderboard.py")(**kwargs)
 
     def prosody_ab(self, **kwargs):
         """Prosody control-vs-marker A/B. Wraps scripts/eval_prosody_ab.py."""
-        from eval_prosody_ab import main
-
-        return main(**kwargs)
+        return _sibling_main("eval_prosody_ab.py")(**kwargs)
 
     def checkpoints(self, **kwargs):
         """Within-run checkpoint sweep. Wraps scripts/eval_grpo_checkpoints.py."""
-        from eval_grpo_checkpoints import main
-
-        return main(**kwargs)
+        return _sibling_main("eval_grpo_checkpoints.py")(**kwargs)
 
     def config(self, config: str | None = None):
         """Print the resolved EvalConfig and the metric registry (no model load)."""

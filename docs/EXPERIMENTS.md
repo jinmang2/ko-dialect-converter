@@ -102,19 +102,22 @@ See memory `prosody-sft-ab-verdict`.
 → `outputs/eval_logs/quantize_tradeoff_*.json`. Trade-off summary is the CPU-tested
 `evaluation.serving.quantization_tradeoff` (size%, speedup, chrf_drop vs the fp16 baseline).
 
-sft_merged, gangwon (n=150, confirms an n=24 first signal):
+sft_merged, gangwon. Quality/latency at n=150; **footprint = measured peak VRAM** (the
+number that decides what fits 6 GB), not a disk-size guess:
 
-| variant | size | p50 latency | chrF | copy_margin |
+| variant | peak VRAM | p50 latency | chrF | copy_margin |
 |---|---|---|---|---|
-| fp16 | 953 MB | 488 ms | 68.5 | −5.09 |
-| **bnb 4-bit (NF4)** | **238 MB (25%)** | **985 ms (0.50× — slower)** | 70.7 | −5.72 |
+| fp16 | 1024 MB | 488 ms | 68.5 | −5.09 |
+| **bnb 4-bit (NF4)** | **518 MB (51%)** | **985 ms (0.50× — slower)** | 70.7 | −5.72 |
 
-**Verdict: 4-bit PTQ is a memory win, not a latency win on RTX 2060.** It cuts the
-footprint 4× with no quality loss (chrF is non-negative at both n=24 and n=150), but is ~2×
-*slower* — bitsandbytes 4-bit dequant overhead dominates for a 0.5B model without optimized
-Turing kernels. For actual speed, use the **GGUF Q4_K_M** path (llama.cpp,
-`scripts/export_gguf.py` + `bench_serving.py`). Escalate to QAT (`training.backend=qat`)
-only if PTQ shows real quality loss — it does not here.
+**Verdict: 4-bit PTQ is a modest memory win and a latency *loss* on RTX 2060.** No quality
+loss (chrF non-negative at n=24 and n=150), but it runs ~2× *slower* — bitsandbytes dequant
+overhead dominates for a 0.5B model without optimized Turing kernels. And the footprint win
+is **~2×, not 4×**: 4-bit quantizes the *weights* (~4× on weights), but for a 0.5B model the
+activations / KV-cache / CUDA context dominate VRAM, so total peak only drops to ~51%. (An
+earlier table reported a disk-weight `/4` estimate — corrected here to measured VRAM.) For
+real speed use the **GGUF Q4_K_M** path (llama.cpp, `scripts/export_gguf.py` +
+`bench_serving.py`). QAT (`training.backend=qat`) is unwarranted — PTQ shows no quality loss.
 
 ---
 

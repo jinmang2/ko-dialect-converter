@@ -102,12 +102,17 @@ def main(
     if cfg.n_samples:
         ds = ds.select(range(min(cfg.n_samples, len(ds))))
 
+    import torch
+
     template = ChatTemplate()
-    size_mb = directory_size_mb(model_path)
+    disk_mb = directory_size_mb(model_path)  # fp16 on-disk reference (logged, not the footprint)
     variants = []
     plan = [("fp16", _load_fp16)] + ([("bnb4", _load_bnb4)] if include_bnb4 else [])
     for name, loader in plan:
         logger.info("Benching variant: %s", name)
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.reset_peak_memory_stats()
         model, tok = loader(model_path)
         prompts = [template.build_prompt(tok, s["standard"], target_do, "std2dia") for s in ds]
         refs = [s["dialect"] for s in ds]
@@ -121,12 +126,17 @@ def main(
             max_new_tokens=cfg.max_new_tokens,
             batch_size=cfg.batch_size,
         )
-        # 4-bit weights are ~quarter size; report the on-disk fp16 size scaled as a proxy
-        metrics.update(name=name, size_mb=size_mb if name == "fp16" else round(size_mb / 4, 2))
+        # size_mb = MEASURED peak VRAM (the real footprint that decides what fits a 6GB GPU),
+        # not a disk-size guess. disk_mb (fp16 on-disk) is logged for reference only.
+        peak_mb = (
+            round(torch.cuda.max_memory_allocated() / (1024**2), 1)
+            if torch.cuda.is_available()
+            else disk_mb
+        )
+        metrics.update(name=name, size_mb=peak_mb, disk_mb=disk_mb if name == "fp16" else None)
+        logger.info("[%s] peak VRAM=%.1f MB", name, peak_mb)
         variants.append(metrics)
         del model
-        import torch
-
         torch.cuda.empty_cache()
 
     summary = quantization_tradeoff(variants, baseline="fp16")

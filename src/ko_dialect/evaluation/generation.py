@@ -30,13 +30,13 @@ class _Generator(Protocol):
     def generate(self, **kwargs: Any) -> Any: ...
 
 
-def resolve_eval_model(model_path: str, base_model: str | None = None) -> tuple[str, bool]:
+def resolve_eval_model(model_path: str) -> tuple[str, bool]:
     """Resolve an eval target to ``(path, is_adapter)``.
 
     A Trainer output dir holding only ``checkpoint-*`` subdirs is resolved to its latest
     checkpoint. ``is_adapter`` is True when the resolved dir carries an
-    ``adapter_config.json`` (a LoRA adapter to merge onto ``base_model``) rather than a
-    full model. Pure filesystem logic — unit-tested without a GPU.
+    ``adapter_config.json`` (a LoRA adapter to merge onto a base model) rather than a full
+    model. Pure filesystem logic — unit-tested without a GPU.
     """
     resolved = resolve_best_checkpoint(model_path)
     is_adapter = (Path(resolved) / "adapter_config.json").exists()
@@ -60,7 +60,7 @@ def load_generation_model(
     if dtype is None:
         dtype = torch.float16
 
-    resolved, is_adapter = resolve_eval_model(model_path, base_model)
+    resolved, is_adapter = resolve_eval_model(model_path)
     tokenizer = AutoTokenizer.from_pretrained(resolved)
     if is_adapter:
         from peft import PeftModel
