@@ -43,13 +43,14 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install test deps
-        run: pip install pytest pytest-cov
-
-      - name: Run tests (skip GPU, skip if no tests yet)
+      - name: Install package + CPU deps
         run: |
-          if [ -d "tests" ]; then
-            pytest tests/ -x -q -m "not gpu" --tb=short
-          else
-            echo "No tests directory yet — skipping"
-          fi
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -e ".[dev]"
+
+      - name: Import check
+        run: python -c "import ko_dialect; from ko_dialect.evaluation import evaluate_all, EvalConfig"
+
+      - name: Run tests (skip GPU)
+        run: pytest tests/ -x -q -m "not gpu" --tb=short

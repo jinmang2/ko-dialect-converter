@@ -28,10 +28,6 @@ dependencies = [
     "sacrebleu>=2.4.0",
     "rouge-score>=0.1.2",
     "scikit-learn>=1.4.0",
-
-    # Data generation / serialization
-    "openai>=1.50",
-    "google-genai",
     "orjson",
     "ujson",
 
@@ -41,12 +37,6 @@ dependencies = [
     "rich>=13.0.0",
     "tqdm>=4.66.0",
     "hydra-core>=1.3.0",
-    "ipywidgets",
-    "open-webui",
-
-    # Experiment management
-    "mlflow>=2.15.0",
-    "wandb>=0.17.0",
 
     # Resolve requests dependency warning
     "requests>=2.31.0",
@@ -63,9 +53,12 @@ dev = [
     "pre-commit>=3.7.0",
     "types-PyYAML>=6.0.0",
 ]
-eval  = ["lm_eval>=0.4"]
-vllm  = ["vllm"]
-wandb = ["wandb>=0.18", "hydra-core>=1.3"]
+# Opt-in extras kept out of core so CPU CI / minimal installs stay lean.
+track   = ["wandb>=0.18", "mlflow>=2.15.0"]   # logger=wandb | logger=mlflow
+datagen = ["openai>=1.50", "google-genai"]    # synthetic-data generation scripts
+serve   = ["open-webui", "ipywidgets"]         # serving UI / notebooks
+eval    = ["lm_eval>=0.4"]
+vllm    = ["vllm"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
