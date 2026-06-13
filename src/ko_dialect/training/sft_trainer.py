@@ -229,6 +229,22 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
     save_strategy = eval_strategy if use_best else cfg.save_strategy
     save_steps = cfg.eval_steps if save_strategy == "steps" else cfg.save_steps
 
+    # Sanity-warn on a likely metric/direction mismatch: a "lower is better" metric (loss/
+    # perplexity) with greater_is_better=True, or a "higher is better" one (accuracy/f1/
+    # bleu/chrf) with greater_is_better=False would pick the *worst* checkpoint.
+    if cfg.early_stopping_patience is not None or use_best:
+        lower = any(k in cfg.metric_for_best_model.lower() for k in ("loss", "perplex", "ppl"))
+        higher = any(
+            k in cfg.metric_for_best_model.lower() for k in ("acc", "f1", "bleu", "chrf", "score")
+        )
+        if (lower and cfg.greater_is_better) or (higher and not cfg.greater_is_better):
+            logger.warning(
+                "metric_for_best_model=%r with greater_is_better=%s looks inverted — "
+                "this may select the worst checkpoint. Check the direction.",
+                cfg.metric_for_best_model,
+                cfg.greater_is_better,
+            )
+
     training_args = TRLSFTConfig(
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_train_epochs,

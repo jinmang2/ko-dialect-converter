@@ -179,6 +179,7 @@ def main(
 
     track = bool(wandb_project or mlflow_experiment)
     run_name = f"leaderboard_{'_'.join(regions)}"
+    started_mlflow = False
     if wandb_project:
         import wandb
 
@@ -191,13 +192,14 @@ def main(
     if mlflow_experiment:
         import mlflow
 
-        # End any run left active by a previous in-process call (e.g. re-entry via
-        # scripts/eval.py, or a prior call that raised) so start_run can't hit
-        # "Run already active". On process exit MLflow ends the run via its atexit hook.
-        if mlflow.active_run() is not None:
-            mlflow.end_run()
-        mlflow.set_experiment(mlflow_experiment)
-        mlflow.start_run(run_name=run_name)
+        # Reuse an already-active run (an external caller's, or one left by a prior
+        # in-process call) rather than clobbering it — only start, and later end, a run
+        # we own. Avoids both "Run already active" on re-entry and ending someone else's
+        # run. A stale run we don't own is closed by MLflow's atexit hook on process exit.
+        if mlflow.active_run() is None:
+            mlflow.set_experiment(mlflow_experiment)
+            mlflow.start_run(run_name=run_name)
+            started_mlflow = True
         mlflow.log_params({"n": n, "select_by": select_by, "n_runs": len(specs)})
     logger.info("Runs: %s", ", ".join(s.tag for s in specs))
     logger.info("Regions: %s", ", ".join(regions))
@@ -370,7 +372,7 @@ def main(
         import wandb
 
         wandb.finish()
-    if mlflow_experiment:
+    if started_mlflow:
         import mlflow
 
         mlflow.end_run()
