@@ -96,23 +96,59 @@ python scripts/push_to_hub.py --model_path outputs/grpo_500_merged \
     --leaderboard 'outputs/eval_logs/leaderboard_overall_*.json'
 ```
 
-## Key findings
+## Results
 
-See [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) for the full tables. In brief:
+Full tables + reproducing commands in [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md);
+`python scripts/report.py` regenerates a live `docs/RESULTS.md` from `outputs/eval_logs/`.
 
-- **GRPO's advantage is dialect-dependent** — SFT leads on the subtle Gangwon dialect,
-  GRPO clearly wins on the distinct Gyeongsang dialect (SFT is Pareto-dominated there).
-  `grpo_500` is the most robust single model (on the frontier in every scope).
-- **Prosody (F0-marker) supervision is a content-fidelity regularizer**, not a dialectness
-  lever — it significantly raises reconstruction_bleu without changing the dialect axes.
-  Marker scheme is now **K-ToBI-grounded** (Jun 2000 boundary tones), declination-aware,
-  with `<WAVE>` reactivated via F0 coefficient-of-variation and per-eojeol markers available.
-  A v2 A/B confirms this holds across schemes: the principled K-ToBI markers replicate the
-  v1 recon_bleu gain (significant, both regions) but **do not** turn it into a dialect gain.
-- **4-bit PTQ is a modest memory win and a latency loss on RTX 2060** — measured peak VRAM
-  drops only ~2× (1024→518 MB, not 4×: activations/KV dominate for a 0.5B model) and it runs
-  ~2× *slower* (Turing dequant overhead), with no quality loss. Use GGUF Q4_K_M for speed.
-  See [`docs/EXPERIMENTS.md`](docs/EXPERIMENTS.md) §3–4.
+### What's built
+A complete, config-driven pipeline on a single 6 GB GPU, with an evaluation methodology
+designed against known TST/dialect pitfalls (source-copying, reward circularity):
+
+- **Selection is proxy-independent** — runs are ranked by `reconstruction_bleu`↑ with a
+  Pareto frontier over `copy_margin`↑, DFS, and paired-bootstrap significance (Koehn 2004);
+  classifier-derived metrics (tdr/dfs/jscore) are monitoring-only to avoid circularity.
+- **Tooling:** unified `scripts/eval.py` (config-driven), cross-run leaderboard (per-region +
+  weighted overall), quantization trade-off + serving/training benches, multi-adapter serving,
+  GGUF export, HF-Hub publishing, generated results report, W&B + MLflow monitoring, SFT early
+  stopping. ~210 CPU tests, ruff-clean, CI (lint + import + tests).
+
+### Dialect classifier (Stage 2, = GRPO style reward)
+| model | macro-F1 | accuracy |
+|---|---|---|
+| TextCNN on denoised data | **0.95** | 0.97 |
+
+### Does GRPO beat SFT? — cross-run leaderboard (n=150)
+**Dialect-dependent, no single winner.** SFT leads on the subtle **Gangwon** dialect; GRPO
+clearly wins on the distinct **Gyeongsang** dialect (SFT is Pareto-dominated there).
+`grpo_500` is the most robust single model — on the Pareto frontier in every scope, recon
+deficit vs SFT never significant.
+
+### Prosody supervision — A/B (v2 K-ToBI markers vs matched control, markers stripped, n=150)
+| metric | Gangwon Δ(pros−ctrl) | Gyeongsang Δ(pros−ctrl) |
+|---|---|---|
+| **reconstruction_bleu↑** | **+2.5** (p=0.008) | **+4.8** (p<0.001) |
+| copy_margin / tdr / dfs / eojeol | flat → slightly negative | flat → slightly negative |
+
+**Prosody is a content-fidelity regularizer, not a dialectness lever** — it raises faithfulness
+significantly but moves no dialect axis. Holds across two independent marker schemes (v1 ad-hoc
+and v2 K-ToBI, Jun 2000 boundary tones; declination-aware, `<WAVE>` via F0 CoV; per-eojeol mode
+available).
+
+### Quantization (PTQ) — measured on `sft_merged`
+| variant | peak VRAM | p50 latency | chrF |
+|---|---|---|---|
+| fp16 | 1024 MB | 488 ms | 68.5 |
+| **bnb 4-bit (NF4)** | **518 MB (51%)** | **985 ms (~2× slower)** | 70.7 |
+
+4-bit is a **~2× memory win and a latency loss** on RTX 2060 (Turing dequant overhead; only the
+weights shrink while activations/KV dominate VRAM), with no quality loss → use **GGUF Q4_K_M**
+for speed.
+
+### Training throughput
+unsloth: **286 tok/s, 1.3 GB peak VRAM** (bs=1/seq=256). DeepSpeed and vanilla bnb-LoRA training
+do **not** run on this box (no CUDA toolkit/`nvcc`; Turing BF16-unscale wall) → unsloth is the
+only working training path here. Config + bench stay ready for a multi-GPU/toolkit machine.
 
 ## Citations
 
