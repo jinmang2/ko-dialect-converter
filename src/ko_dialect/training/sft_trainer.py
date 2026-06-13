@@ -182,9 +182,9 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
     try:
         import trl.trainer.base_trainer as _trl_base
 
-        import wandb as _wandb
-
         if not hasattr(_trl_base, "wandb"):
+            import wandb as _wandb
+
             _trl_base.wandb = _wandb
     except ImportError:
         pass
