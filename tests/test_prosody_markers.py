@@ -5,6 +5,8 @@ from ko_dialect.data.prosody import (
     PROSODY_MARKER_POLICY_V1,
     add_sentence_final_marker,
     apply_eojeol_markers,
+    apply_eojeol_markers_to_text,
+    eojeol_markers_aligned,
     eojeol_prosody_markers,
     f0_coefficient_of_variation,
     prosody_marker,
@@ -121,3 +123,31 @@ def test_apply_eojeol_markers_inlines_markers():
         {"word": "함더", "marker": "<KEEP>"},
     ]
     assert apply_eojeol_markers(marked) == "내가<UP> 왔다 함더<KEEP>"
+
+
+def test_apply_eojeol_markers_to_text_marks_aligned_words():
+    text = "밥 뭇나"
+    ep = [{"word": "밥", "marker": "<KEEP>"}, {"word": "뭇나", "marker": "<UP>"}]
+    assert apply_eojeol_markers_to_text(text, ep) == "밥<KEEP> 뭇나<UP>"
+    # marker is faithfully attached to the ORIGINAL words; stripping recovers gold
+    assert strip_markers(apply_eojeol_markers_to_text(text, ep)) == text
+
+
+def test_apply_eojeol_markers_to_text_falls_back_on_misalignment():
+    text = "밥 뭇나"  # 2 words
+    assert apply_eojeol_markers_to_text(text, [{"word": "밥", "marker": "<UP>"}]) == text  # 1 entry
+    assert apply_eojeol_markers_to_text(text, None) == text
+    assert apply_eojeol_markers_to_text(text, []) == text
+
+
+def test_apply_eojeol_markers_to_text_handles_none_marker():
+    text = "밥 뭇나"
+    ep = [{"word": "밥", "marker": None}, {"word": "뭇나", "marker": "<UP>"}]
+    assert apply_eojeol_markers_to_text(text, ep) == "밥 뭇나<UP>"
+
+
+def test_eojeol_markers_aligned():
+    text = "밥 뭇나"
+    assert eojeol_markers_aligned(text, [{"word": "밥"}, {"word": "뭇나"}]) is True
+    assert eojeol_markers_aligned(text, [{"word": "밥"}]) is False
+    assert eojeol_markers_aligned(text, None) is False

@@ -9,10 +9,16 @@ from typing import Any
 from datasets import Dataset, DatasetDict, load_from_disk
 
 from .filtering import carries_dialect_marker, norm_levenshtein
-from .prosody import add_sentence_final_marker
+from .prosody import (
+    add_sentence_final_marker,
+    apply_eojeol_markers_to_text,
+    eojeol_markers_aligned,
+)
 from .template import ChatTemplate, Direction
 
 logger = logging.getLogger(__name__)
+
+PROSODY_MODES = ("none", "sentence", "eojeol")
 
 DIALECT_LABELS: dict[str, int] = {
     "standard": 0,
@@ -35,6 +41,7 @@ def build_sft_dataset(
     filter_identical: bool = True,
     output_mode: str = "text",
     include_prosody: bool = False,
+    prosody_mode: str | None = None,
 ) -> DatasetDict:
     """Build SFT dataset from raw dialect DatasetDict.
 
@@ -47,13 +54,23 @@ def build_sft_dataset(
     - ``"structured"``: store raw ``source,target,do,direction`` and apply the template
       *at train time*. Lets you swap templates / loss-masking without rebuilding data.
 
-    ``include_prosody`` is an opt-in experiment path. When a raw row has a
-    ``prosody_marker`` (for example ``"<UP>"``), the dialect side is rendered with
-    that marker at SFT build time: as the target for ``std2dia`` and as the source for
-    ``dia2std``. Missing markers are reported per split and fall back to plain dialect.
+    ``prosody_mode`` is an opt-in experiment path controlling how F0 markers decorate the
+    dialect side (target for ``std2dia``, source for ``dia2std``):
+
+    - ``"none"`` (default): plain dialect text.
+    - ``"sentence"``: one sentence-final marker from the ``prosody_marker`` column.
+    - ``"eojeol"``: per-word markers from the ``dialect_eojeol_prosody`` column, applied
+      only when they align 1:1 with the dialect words (else that row falls back to plain).
+
+    ``include_prosody=True`` is a back-compat alias for ``prosody_mode="sentence"``. Rows
+    that fall back (missing/misaligned markers) are counted and reported per split.
     """
     if output_mode not in ("text", "structured"):
         raise ValueError(f"output_mode must be 'text' or 'structured', got {output_mode!r}.")
+    if prosody_mode is None:
+        prosody_mode = "sentence" if include_prosody else "none"
+    if prosody_mode not in PROSODY_MODES:
+        raise ValueError(f"prosody_mode must be one of {PROSODY_MODES}, got {prosody_mode!r}.")
     if template is None:
         template = ChatTemplate()
     if isinstance(dataset, Dataset):
@@ -70,10 +87,16 @@ def build_sft_dataset(
         for sample in split_ds:
             do = sample["do"]
             dialect_text = sample["dialect"]
-            if include_prosody:
+            if prosody_mode == "sentence":
                 marker = sample.get("prosody_marker")
                 if marker:
                     dialect_text = add_sentence_final_marker(dialect_text, marker)
+                else:
+                    missing_prosody_markers += 1
+            elif prosody_mode == "eojeol":
+                eojeol = sample.get("dialect_eojeol_prosody")
+                if eojeol_markers_aligned(dialect_text, eojeol):
+                    dialect_text = apply_eojeol_markers_to_text(dialect_text, eojeol)
                 else:
                     missing_prosody_markers += 1
             pairs: list[tuple[str, str, Direction]] = [
@@ -96,21 +119,22 @@ def build_sft_dataset(
                     text = template.apply(tokenizer, source, target, do, direction)
                     rows.append({"text": text, "do": do, "direction": direction})
 
-        if include_prosody and missing_prosody_markers:
+        if prosody_mode != "none" and missing_prosody_markers:
             logger.warning(
-                "[%s] include_prosody=True but %d raw rows had no prosody_marker; "
-                "those rows used plain dialect text.",
+                "[%s] prosody_mode=%s but %d rows lacked usable markers "
+                "(missing/misaligned); those rows used plain dialect text.",
                 split_name,
+                prosody_mode,
                 missing_prosody_markers,
             )
 
         result[split_name] = Dataset.from_list(rows)
         logger.info(
-            "[%s] %d SFT examples (output_mode=%s, include_prosody=%s)",
+            "[%s] %d SFT examples (output_mode=%s, prosody_mode=%s)",
             split_name,
             len(rows),
             output_mode,
-            include_prosody,
+            prosody_mode,
         )
 
     return DatasetDict(result)

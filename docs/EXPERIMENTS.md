@@ -77,6 +77,14 @@ copy_margin drifts a touch more negative (the copy-bias signature). Conclusion h
 two independent marker schemes: predicting F0 markers buys faithfulness, not dialectalness.
 (Caveat: control and prosody arms are separate 15k/1ep runs, not row-identical as in v1.)
 
+**Next open question — does *per-eojeol* prosody (finer than sentence-level) move a dialect
+axis?** The training path now exists: re-parse raw with `prepare_data.py` (adds the
+`dialect_eojeol_prosody` column), then `stage0_build_datasets.py --prosody_mode eojeol`
+builds an SFT set whose dialect side carries per-word markers (`밥<KEEP> 뭇나<UP>`), applied
+faithfully where they align 1:1 with the dialect words (~77% of rows; the rest fall back to
+plain). Train + run `eval_prosody_ab` as above. Not yet run (needs the 33G re-parse + a
+15k/1ep arm).
+
 Caveats: recon_bleu↑ with copy_margin slightly↓ is the copy-bias signature (a source-faithful
 output back-translates more easily) — the small copy_margin move suggests it is a minor
 contributor, but the qualitative gate is needed to confirm. First signal only: 15k/1ep,

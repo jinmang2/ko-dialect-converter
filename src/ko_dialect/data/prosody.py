@@ -180,6 +180,32 @@ def apply_eojeol_markers(marked: list[dict]) -> str:
     return " ".join(f"{m['word']}{m['marker']}" if m.get("marker") else m["word"] for m in marked)
 
 
+def apply_eojeol_markers_to_text(dialect_text: str, eojeol_prosody: list[dict] | None) -> str:
+    """Append per-eojeol markers to the *original* dialect string, faithfully.
+
+    Markers are attached to each word of ``dialect_text`` from ``eojeol_prosody`` (the
+    ``dialect_eojeol_prosody`` column) **only when the two align 1:1** — i.e. the marker list
+    has exactly one entry per dialect word. On any misalignment (segment count ≠ word count,
+    ~23% of rows from N:M mappings / ghost spaces) or empty input, the text is returned
+    unchanged. This guarantees the SFT target is the true dialect words plus markers, never a
+    reconstruction that could drop or reorder words — inter-word whitespace is canonicalised
+    to single spaces (stripping markers recovers the gold dialect up to that normalisation).
+    Callers count fallbacks via :func:`eojeol_markers_aligned`.
+    """
+    words = dialect_text.split()
+    if not eojeol_prosody or len(eojeol_prosody) != len(words):
+        return dialect_text
+    return " ".join(
+        f"{word}{m['marker']}" if m.get("marker") else word
+        for word, m in zip(words, eojeol_prosody)
+    )
+
+
+def eojeol_markers_aligned(dialect_text: str, eojeol_prosody: list[dict] | None) -> bool:
+    """True when per-eojeol markers align 1:1 with the dialect words (so they were applied)."""
+    return bool(eojeol_prosody) and len(eojeol_prosody) == len(dialect_text.split())
+
+
 def add_sentence_final_marker(text: str, marker: str | None) -> str:
     """Insert a prosody marker before sentence-final punctuation when present."""
     text = text.strip()

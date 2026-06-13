@@ -114,7 +114,74 @@ def test_include_prosody_warns_when_marker_is_missing(mock_tokenizer, caplog):
     )
 
     assert out["train"][0]["target"] == "밥 먹었나?"
-    assert "no prosody_marker" in caplog.text
+    assert "missing/misaligned" in caplog.text
+
+
+def test_prosody_mode_eojeol_marks_aligned_words(mock_tokenizer):
+    raw = Dataset.from_list(
+        [
+            {
+                "standard": "밥 먹었니",
+                "dialect": "밥 뭇나",
+                "dialect_eojeol_prosody": [
+                    {"word": "밥", "marker": "<KEEP>"},
+                    {"word": "뭇나", "marker": "<UP>"},
+                ],
+                "do": "gyeongsangdo",
+                "is_identical": False,
+            },
+        ]
+    )
+    out = data_dataset.build_sft_dataset(
+        raw, mock_tokenizer, output_mode="structured", prosody_mode="eojeol"
+    )
+    assert out["train"][0]["target"] == "밥<KEEP> 뭇나<UP>"
+
+
+def test_prosody_mode_eojeol_falls_back_when_misaligned(mock_tokenizer, caplog):
+    # 2 dialect words but 1 marker entry -> misaligned -> plain text + warning
+    raw = Dataset.from_list(
+        [
+            {
+                "standard": "밥 먹었니",
+                "dialect": "밥 뭇나",
+                "dialect_eojeol_prosody": [{"word": "밥뭇나", "marker": "<UP>"}],
+                "do": "gyeongsangdo",
+                "is_identical": False,
+            },
+        ]
+    )
+    out = data_dataset.build_sft_dataset(
+        raw, mock_tokenizer, output_mode="structured", prosody_mode="eojeol"
+    )
+    assert out["train"][0]["target"] == "밥 뭇나"
+    assert "misaligned" in caplog.text
+
+
+def test_include_prosody_is_alias_for_sentence_mode(mock_tokenizer):
+    raw = Dataset.from_list(
+        [
+            {
+                "standard": "밥 먹었니?",
+                "dialect": "밥 먹었나?",
+                "prosody_marker": "<UP>",
+                "do": "gyeongsangdo",
+                "is_identical": False,
+            },
+        ]
+    )
+    via_alias = data_dataset.build_sft_dataset(
+        raw, mock_tokenizer, output_mode="structured", include_prosody=True
+    )
+    via_mode = data_dataset.build_sft_dataset(
+        raw, mock_tokenizer, output_mode="structured", prosody_mode="sentence"
+    )
+    assert via_alias["train"][0]["target"] == via_mode["train"][0]["target"] == "밥 먹었나<UP>?"
+
+
+def test_invalid_prosody_mode_raises(raw_ds, mock_tokenizer):
+    with pytest.raises(ValueError, match="prosody_mode"):
+        data_dataset.build_sft_dataset(raw_ds, mock_tokenizer, prosody_mode="bogus")
 
 
 def test_prosody_marker_coverage_uses_sft_filters():

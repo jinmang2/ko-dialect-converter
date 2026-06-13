@@ -52,6 +52,7 @@ def main(
     template_name: str = "default",
     output_mode: str = "text",
     include_prosody: bool = False,
+    prosody_mode: str | None = None,
     cls_filter_identical: bool = True,
     cls_min_norm_levenshtein: float | None = 0.1,
     cls_denoise_standard: bool = True,
@@ -69,9 +70,11 @@ def main(
         template_name: Registered chat template (see data/template.py).
         output_mode: "text" (pre-render chat string) or "structured" (store raw fields so
             the template/loss-mask can be swapped at train time without rebuilding).
-        include_prosody: Render raw ``prosody_marker`` values into the dialect side of
-            SFT examples. This is opt-in because existing text-only SFT data should not
-            change by default.
+        include_prosody: Back-compat alias for ``prosody_mode="sentence"``.
+        prosody_mode: How F0 markers decorate the dialect side — "none" (default),
+            "sentence" (one sentence-final marker from ``prosody_marker``), or "eojeol"
+            (per-word markers from ``dialect_eojeol_prosody``). Opt-in: text-only SFT data
+            should not change by default.
         cls_filter_identical: Drop the dialect copy when standard == dialect (no markers).
             Leave True — disabling reintroduces ~20% contradictory labels.
         cls_min_norm_levenshtein: Admit a dialect sample only when normalized char-level
@@ -89,13 +92,18 @@ def main(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
+    # Resolve prosody_mode (explicit wins; include_prosody=True is the legacy alias).
+    if prosody_mode is None:
+        prosody_mode = "sentence" if include_prosody else "none"
+    prosody_on = prosody_mode != "none"
+
     logger.info("Loading raw dataset from %s", raw_dataset_path)
     raw_manifest = load_raw_manifest(raw_dataset_path)
-    if include_prosody:
+    if prosody_on:
         validate_prosody_manifest(raw_manifest)
     dataset = dialect_data.load_dialect_dataset(raw_dataset_path)
     prosody_marker_coverage = (
-        data_dataset.prosody_marker_coverage(dataset) if include_prosody else None
+        data_dataset.prosody_marker_coverage(dataset) if prosody_mode == "sentence" else None
     )
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -105,10 +113,10 @@ def main(
     template = dialect_data.get_template(template_name)
 
     logger.info(
-        "Building SFT dataset (mode=%s, template=%s, include_prosody=%s) ...",
+        "Building SFT dataset (mode=%s, template=%s, prosody_mode=%s) ...",
         output_mode,
         template_name,
-        include_prosody,
+        prosody_mode,
     )
     sft_ds = dialect_data.build_sft_dataset(
         dataset,
@@ -116,7 +124,7 @@ def main(
         template,
         both_directions=both_directions,
         output_mode=output_mode,
-        include_prosody=include_prosody,
+        prosody_mode=prosody_mode,
     )
     sft_ds.save_to_disk(str(out / "sft"))
     (out / "sft_manifest.json").write_text(
@@ -126,8 +134,9 @@ def main(
                 "template_name": template_name,
                 "output_mode": output_mode,
                 "both_directions": both_directions,
-                "include_prosody": include_prosody,
-                "prosody_marker_policy": (PROSODY_MARKER_POLICY if include_prosody else None),
+                "prosody_mode": prosody_mode,
+                "include_prosody": prosody_on,
+                "prosody_marker_policy": (PROSODY_MARKER_POLICY if prosody_on else None),
                 "prosody_marker_coverage": prosody_marker_coverage,
                 "raw_manifest": raw_manifest,
             },
