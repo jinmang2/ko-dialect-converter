@@ -60,6 +60,15 @@ class SFTConfig:
     report_to: list[str] = field(default_factory=list)
     eval_strategy: str = "epoch"  # "no" | "steps" | "epoch"
     eval_steps: int = 500
+    save_strategy: str = "steps"  # "no" | "steps" | "epoch"
+    # --- early stopping (opt-in; off by default to preserve existing runs) ---
+    # When early_stopping_patience is set, training stops after that many evals without
+    # improvement in metric_for_best_model, and (with load_best_model_at_end) the best
+    # checkpoint is restored before saving. Needs an eval_dataset.
+    load_best_model_at_end: bool = False
+    metric_for_best_model: str = "eval_loss"
+    greater_is_better: bool = False
+    early_stopping_patience: int | None = None
     save_merged: bool = True  # also save full 16-bit weights so GRPO can load directly
     # --- training-optimization knobs ---
     # optim: "adamw_torch" (default) or "paged_adamw_8bit" to shrink optimizer state on 6GB.
@@ -212,6 +221,14 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
             )
         sft_kwargs["dataset_text_field"] = "text"
 
+    # Early stopping / best-checkpoint restore needs an eval set; reconcile save↔eval
+    # strategies the way the classifier trainer does (HF requires them to match for
+    # load_best_model_at_end, and save_steps to be a multiple of eval_steps).
+    use_best = cfg.load_best_model_at_end and eval_dataset is not None
+    eval_strategy = cfg.eval_strategy if eval_dataset is not None else "no"
+    save_strategy = eval_strategy if use_best else cfg.save_strategy
+    save_steps = cfg.eval_steps if save_strategy == "steps" else cfg.save_steps
+
     training_args = TRLSFTConfig(
         output_dir=cfg.output_dir,
         num_train_epochs=cfg.num_train_epochs,
@@ -221,10 +238,14 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
         learning_rate=cfg.learning_rate,
         warmup_ratio=cfg.warmup_ratio,
         lr_scheduler_type=cfg.lr_scheduler_type,
-        save_steps=cfg.save_steps,
+        save_steps=save_steps,
+        save_strategy=save_strategy,
         logging_steps=cfg.logging_steps,
-        eval_strategy=cfg.eval_strategy if eval_dataset is not None else "no",
+        eval_strategy=eval_strategy,
         eval_steps=cfg.eval_steps,
+        load_best_model_at_end=use_best,
+        metric_for_best_model=cfg.metric_for_best_model,
+        greater_is_better=cfg.greater_is_better,
         fp16=cfg.fp16,
         bf16=cfg.bf16,
         optim=cfg.optim,
@@ -241,12 +262,20 @@ def train(cfg: SFTConfig, train_dataset, eval_dataset=None) -> None:
         **sft_kwargs,
     )
 
+    callbacks = []
+    if cfg.early_stopping_patience is not None and eval_dataset is not None:
+        from transformers import EarlyStoppingCallback
+
+        callbacks.append(EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience))
+        logger.info("Early stopping enabled (patience=%d)", cfg.early_stopping_patience)
+
     trainer = SFTTrainer(
         model=model,
         processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         args=training_args,
+        callbacks=callbacks or None,
         compute_metrics=_compute_metrics if eval_dataset is not None else None,
         preprocess_logits_for_metrics=(
             _preprocess_logits_for_metrics if eval_dataset is not None else None

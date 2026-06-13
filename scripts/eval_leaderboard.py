@@ -161,11 +161,13 @@ def main(
     max_new_tokens: int = 64,
     out_dir: str = "outputs/eval_logs",
     wandb_project: str | None = None,
+    mlflow_experiment: str | None = None,
 ):
     """Evaluate every run per region + overall and emit a ranked, annotated leaderboard.
 
-    Pass ``--wandb_project ko-dialect`` to also push per-region, per-run metric panels to
-    W&B (eval/<region>/<run>/<metric>); omit it for the plain local run.
+    Pass ``--wandb_project ko-dialect`` and/or ``--mlflow_experiment ko-dialect`` to also
+    push per-region, per-run metric panels (eval/<region>/<run>/<metric>) to that tracker;
+    omit both for the plain local run.
     """
     specs = _resolve_specs(runs, base, include_sft)
     if not specs:
@@ -175,15 +177,23 @@ def main(
     ds_valid = load_from_disk(dataset_path)["valid"]
     regions = _resolve_regions(target_do, all_regions, ds_valid)
 
+    track = bool(wandb_project or mlflow_experiment)
+    run_name = f"leaderboard_{'_'.join(regions)}"
     if wandb_project:
         import wandb
 
         wandb.init(
             project=wandb_project,
-            name=f"leaderboard_{'_'.join(regions)}",
+            name=run_name,
             job_type="eval",
             config={"n": n, "select_by": select_by, "runs": [s.tag for s in specs]},
         )
+    if mlflow_experiment:
+        import mlflow
+
+        mlflow.set_experiment(mlflow_experiment)
+        mlflow.start_run(run_name=run_name)
+        mlflow.log_params({"n": n, "select_by": select_by, "n_runs": len(specs)})
     logger.info("Runs: %s", ", ".join(s.tag for s in specs))
     logger.info("Regions: %s", ", ".join(regions))
 
@@ -249,7 +259,7 @@ def main(
         payload["significance_vs_baseline"] = significance
         per_region_rows[region] = ranked
         per_region_payload[region] = payload
-        if wandb_project:
+        if track:
             from ko_dialect.monitoring import log_panels, metrics_panel
 
             for tag, metrics in ranked:
@@ -355,6 +365,10 @@ def main(
         import wandb
 
         wandb.finish()
+    if mlflow_experiment:
+        import mlflow
+
+        mlflow.end_run()
 
 
 if __name__ == "__main__":

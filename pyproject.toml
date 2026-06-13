@@ -25,7 +25,6 @@ dependencies = [
     # see: https://github.com/unslothai/unsloth#installation
 
     # Evaluation
-    "evaluate>=0.4.2",
     "sacrebleu>=2.4.0",
     "rouge-score>=0.1.2",
     "scikit-learn>=1.4.0",

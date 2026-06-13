@@ -15,7 +15,7 @@ Keep it up-to-date as the codebase evolves.
 | Training method | QLoRA (4-bit NF4) via Unsloth + TRL `SFTTrainer` |
 | Alternative | PTQ + LoRA (bitsandbytes AWQ/GPTQ post-quant + adapter) |
 | Export | GGUF (Q4_K_M) via llama.cpp for CPU/edge serving |
-| Target hardware | NVIDIA RTX 2060 — Turing (SM 7.5), 8 GB VRAM, **no native BF16** |
+| Target hardware | NVIDIA RTX 2060 — Turing (SM 7.5), 6 GB VRAM, **no native BF16** |
 
 ### Hardware constraint
 RTX 2060 is Turing (SM 7.5). BF16 requires SM 8.0+ (Ampere).

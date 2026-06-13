@@ -1,11 +1,12 @@
-"""Structured W&B panels for richer training/eval monitoring.
+"""Structured monitoring panels for richer training/eval tracking (W&B + MLflow).
 
 TRL's GRPOTrainer already logs per-reward-function means automatically, but two things the
-project cares about were never surfaced to W&B: the **prosody marker distribution** (is an
-arm collapsing to one boundary tone?) and **eval-metric panels** (the leaderboard / A/B
-scripts logged nothing). These builders turn raw counts / metric dicts into namespaced,
-W&B-loggable payloads; ``log_panels`` writes them and is a safe no-op when no run is active
-(CI, ``logger=disabled``), so callers never need to guard the import.
+project cares about were never surfaced: the **prosody marker distribution** (is an arm
+collapsing to one boundary tone?) and **eval-metric panels** (the leaderboard / A/B scripts
+logged nothing). These builders turn raw counts / metric dicts into namespaced payloads;
+``log_panels`` writes them to whichever tracker has a live run — W&B and/or MLflow (matching
+``tracking.setup_tracking``) — and is a safe no-op when neither is active (CI,
+``logger=disabled``), so callers never need to guard the import.
 
 The builders are pure and unit-tested; ``log_panels`` is the only side-effecting function.
 """
@@ -50,11 +51,34 @@ def wandb_run_active() -> bool:
     return wandb.run is not None
 
 
-def log_panels(payload: dict[str, Any], step: int | None = None) -> bool:
-    """Log a panel dict to the active W&B run; no-op (returns False) when none is active."""
-    if not payload or not wandb_run_active():
+def mlflow_run_active() -> bool:
+    """True only if mlflow is importable and has a live run."""
+    try:
+        import mlflow
+    except ImportError:
         return False
-    import wandb
+    return mlflow.active_run() is not None
 
-    wandb.log(payload, step=step)
-    return True
+
+def log_panels(payload: dict[str, Any], step: int | None = None) -> bool:
+    """Log a panel dict to whichever tracker has a live run — W&B and/or MLflow.
+
+    Backend-agnostic so the same call works under ``logger=wandb`` or ``logger=mlflow``
+    (``tracking.setup_tracking``). No-op (returns False) when neither has an active run, so
+    callers never need to guard. Returns True if at least one backend was logged to.
+    """
+    if not payload:
+        return False
+    logged = False
+    if wandb_run_active():
+        import wandb
+
+        wandb.log(payload, step=step)
+        logged = True
+    if mlflow_run_active():
+        import mlflow
+
+        # MLflow metric keys may not contain some chars W&B allows; '/' is fine.
+        mlflow.log_metrics({k: float(v) for k, v in payload.items()}, step=step or 0)
+        logged = True
+    return logged

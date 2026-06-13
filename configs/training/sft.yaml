@@ -23,6 +23,13 @@ save_steps: 500
 logging_steps: 50
 eval_strategy: steps
 eval_steps: 500
+# Early stopping (opt-in): set early_stopping_patience to a positive int + needs an eval set.
+# load_best_model_at_end restores the best checkpoint (by metric_for_best_model) before saving.
+save_strategy: steps
+load_best_model_at_end: false
+metric_for_best_model: eval_loss
+greater_is_better: false
+early_stopping_patience: null
 fp16: true
 bf16: false
 # --- training-optimization knobs (benchmark with scripts/bench_train.py) ---

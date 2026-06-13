@@ -6,6 +6,7 @@ from ko_dialect.monitoring import (
     log_panels,
     marker_distribution_panel,
     metrics_panel,
+    mlflow_run_active,
     wandb_run_active,
 )
 
@@ -34,7 +35,27 @@ def test_metrics_panel_flattens_numbers_only():
 
 
 def test_log_panels_noop_without_active_run():
-    # No wandb run in the test process => safe no-op, returns False (never raises).
+    # No wandb/mlflow run in the test process => safe no-op, returns False (never raises).
     assert wandb_run_active() is False
+    assert mlflow_run_active() is False
     assert log_panels({"eval/x": 1.0}) is False
     assert log_panels({}) is False
+
+
+def test_log_panels_logs_to_active_mlflow_run(monkeypatch):
+    # Simulate an active MLflow run with no W&B; payload should reach mlflow.log_metrics.
+    import ko_dialect.monitoring as mon
+
+    logged = {}
+
+    class _FakeMlflow:
+        def active_run(self):
+            return object()
+
+        def log_metrics(self, metrics, step=0):
+            logged.update(metrics)
+
+    monkeypatch.setattr(mon, "wandb_run_active", lambda: False)
+    monkeypatch.setitem(__import__("sys").modules, "mlflow", _FakeMlflow())
+    assert mon.log_panels({"eval/gangwondo/chrf": 70.7}, step=5) is True
+    assert logged == {"eval/gangwondo/chrf": 70.7}
