@@ -3,6 +3,10 @@
 Consolidated findings for the standard→dialect conversion model. Each section links to
 the reproducing command and the raw result artifacts under `outputs/eval_logs/`.
 
+> **Live tables:** `python scripts/report.py` regenerates `docs/RESULTS.md` straight from
+> `outputs/eval_logs/*.json` (leaderboards, quantization, classifier) — use it instead of
+> hand-copying numbers, which is how stale figures creep in. This file keeps the verdicts.
+
 Pipeline: Stage0 data → Stage1 SFT (QLoRA) → Stage2 TextCNN classifier (GRPO reward) →
 Stage3 GRPO. Base `Qwen/Qwen2.5-0.5B-Instruct`, RTX 2060 (Turing, fp16-only).
 
