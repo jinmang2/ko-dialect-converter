@@ -59,6 +59,7 @@ datagen = ["openai>=1.50", "google-genai"]    # synthetic-data generation script
 serve   = ["open-webui", "ipywidgets"]         # serving UI / notebooks
 eval    = ["lm_eval>=0.4"]
 vllm    = ["vllm"]
+speech  = ["faster-whisper>=1.0", "torchaudio", "soundfile"]   # src/ko_dialect/speech (ASR + audio F0)
 
 [tool.setuptools.packages.find]
 where = ["src"]

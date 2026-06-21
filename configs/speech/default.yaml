@@ -1,0 +1,31 @@
+# Speech-module defaults (see ko_dialect.speech.config.SpeechConfig + docs/SPEECH_MODULE_DESIGN.md).
+# 6GB RTX 2060 safe: fp16 training (NO bf16), int8 faster-whisper serving.
+
+# Backbone / task
+asr_model: large-v3-turbo            # faster-whisper size id (Whisper-large-v3-turbo, Korean ✓)
+direction: dialect2standard          # target=standard_form; dialect2dialect = pure ASR
+language: ko
+
+# Inference (faster-whisper / CTranslate2)
+device: cuda
+compute_type: int8                   # ≈1.6GB for turbo; fp16 also valid on Turing
+
+# Training (LoRA on the HF Whisper backbone) — fp16 ONLY (RTX 2060 has no BF16)
+hf_backbone: openai/whisper-large-v3-turbo
+precision: fp16
+lora_r: 16
+lora_alpha: 32
+lora_target_modules: [q_proj, v_proj]
+batch_size: 8
+grad_accum: 4
+
+# Audio
+sample_rate: 16000
+max_audio_seconds: 30.0
+
+# Prosody (real-audio F0; validates JSON-derived markers)
+prosody_extractor: pesto             # pesto | fcpe | none
+
+# Data / eval scope
+raw_dataset_path: outputs/dialect_raw_new
+regions: [gangwondo, gyeongsangdo]   # jeju/jeolla/chungcheong once their audio + labels land
