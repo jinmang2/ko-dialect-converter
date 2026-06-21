@@ -7,6 +7,8 @@ from typing import Any
 import torch
 import torch.nn.functional as F  # noqa: N812
 
+from ko_dialect.data.labels import DO_TO_LABEL
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -28,9 +30,8 @@ logger = logging.getLogger(__name__)
 # (plan §3, A3; Mind the Style Gap arXiv:2502.15022 §4).
 # ---------------------------------------------------------------------------
 
-# Must match TextCNNConfig
-LABEL_STANDARD = 0
-DO_TO_LABEL: dict[str, int] = {"gangwondo": 1, "gyeongsangdo": 2}
+# Label ids come from the single source of truth (ko_dialect.data.labels) so the
+# classifier, rewards, and these metrics can never drift out of sync — see top imports.
 
 
 @torch.no_grad()

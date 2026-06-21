@@ -8,8 +8,12 @@ from transformers import PreTrainedModel
 from transformers.configuration_utils import PretrainedConfig
 from transformers.modeling_outputs import ModelOutput
 
-# 3-class labels: standard / gangwondo / gyeongsangdo
-LABEL2ID: dict[str, int] = {"standard": 0, "gangwondo": 1, "gyeongsangdo": 2}
+from ko_dialect.data.labels import DIALECT_LABELS
+
+# Region label map comes from the single source of truth (ko_dialect.data.labels):
+# standard=0, gangwon=1, gyeongsang=2, jeolla=3, jeju=4, chungcheong=5. The *default*
+# config stays 3-class; a 6-class classifier slices these to num_labels in __init__.
+LABEL2ID: dict[str, int] = dict(DIALECT_LABELS)
 ID2LABEL: dict[int, str] = {v: k for k, v in LABEL2ID.items()}
 
 
@@ -35,10 +39,18 @@ class TextCNNConfig(PretrainedConfig):
         class_weights: list[float] | None = None,
         **kwargs,
     ):
+        # Default the label metadata to the first ``num_labels`` regions so it always
+        # matches the head size. Passing the full 6-entry map when num_labels=3 would
+        # let transformers derive num_labels=6 from len(id2label) and silently resize
+        # the classifier head (and vice-versa: a 6-class head with 3-entry metadata).
+        if label2id is None:
+            label2id = {k: v for k, v in LABEL2ID.items() if v < num_labels}
+        if id2label is None:
+            id2label = {v: k for k, v in label2id.items()}
         super().__init__(
             num_labels=num_labels,
-            id2label=id2label or ID2LABEL,
-            label2id=label2id or LABEL2ID,
+            id2label=id2label,
+            label2id=label2id,
             pad_token_id=pad_token_id,
             **kwargs,
         )

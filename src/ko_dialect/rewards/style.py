@@ -3,13 +3,9 @@ from __future__ import annotations
 import torch
 import torch.nn.functional as F  # noqa: N812
 
-from ._utils import extract_texts
+from ko_dialect.data.labels import DO_TO_LABEL, LABEL_STANDARD
 
-LABEL_STANDARD = 0
-DO_TO_LABEL: dict[str, int] = {
-    "gangwondo": 1,
-    "gyeongsangdo": 2,
-}
+from ._utils import extract_texts
 
 
 def make_style_reward(classifier, tokenizer, max_length: int = 128):

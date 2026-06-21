@@ -95,6 +95,55 @@ def write_json_file(path: Path, payload: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# old_dialect (AI-Hub 한국어 방언 발화) transcript cleaning
+# ---------------------------------------------------------------------------
+# AI-Hub stores annotation conventions inside standard_form / dialect_form. The new
+# (139-1) corpus is already clean, so this normalization is applied *only* on the old
+# path. Conventions handled (frequency-ordered from a 300-file scan of 전라도/Training):
+#   (방언)/(표준)   residual dual transcription — keep the side-appropriate token
+#   (( ... ))       unintelligible speech       — drop the marker
+#   ( ... )         single-paren uncertain note — drop
+#   { ... }         non-verbal sound            — drop
+#   & ... &         PII anonymization token     — drop
+#   #word           dialectal interjection mark — strip the '#', keep the word
+#   ~               filler lengthening (아~)     — KEPT (prosodic, identical on both sides)
+_RE_DUAL = re.compile(r"\(([^()]*)\)/\(([^()]*)\)")  # group1=dialect, group2=standard
+_RE_DOUBLE_PAREN = re.compile(r"\(\([^()]*\)\)")
+_RE_SINGLE_PAREN = re.compile(r"\([^()]*\)")
+_RE_BRACE = re.compile(r"\{[^}]*\}")
+_RE_AMP = re.compile(r"&[^&]*&")
+_RE_ORPHAN = re.compile(r"[()\[\]{}&]")
+_RE_WS = re.compile(r"\s+")
+
+
+def clean_old_transcript(text: str | None, side: str) -> str:
+    """Normalize one AI-Hub old-format transcript field.
+
+    Args:
+        text: Raw ``standard_form`` or ``dialect_form`` value (may be None).
+        side: ``"standard"`` or ``"dialect"`` — selects which token of a residual
+            ``(dialect)/(standard)`` dual transcription to keep.
+    """
+    if not text:
+        return ""
+    keep_dialect = side == "dialect"
+    # Resolve residual dual transcription first (it contains parens the later
+    # paren-stripping passes would otherwise mangle).
+    text = _RE_DUAL.sub(lambda m: m.group(1) if keep_dialect else m.group(2), text)
+    text = _RE_DOUBLE_PAREN.sub("", text)
+    text = _RE_SINGLE_PAREN.sub("", text)
+    text = _RE_BRACE.sub("", text)
+    text = _RE_AMP.sub("", text)
+    text = text.replace("#", "")
+    # Orphan brackets/markers: dual-transcription spans occasionally straddle the
+    # utterance segmentation, leaving an unmatched ( or ) with no partner in this
+    # string. They are noise here (bare brackets never appear legitimately), so drop
+    # the stray characters while keeping ~ (lengthening) and - (emphasis) intact.
+    text = _RE_ORPHAN.sub("", text)
+    return _RE_WS.sub(" ", text).strip()
+
+
+# ---------------------------------------------------------------------------
 # Main functions
 # ---------------------------------------------------------------------------
 REGION_MAP = {
@@ -318,17 +367,18 @@ def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
     # Construct samples
     samples = []
     for utterance in data["utterance"]:
-        standard = (utterance.get("standard_form") or "").strip()
-        dialect = (utterance.get("dialect_form") or "").strip()
+        standard = clean_old_transcript(utterance.get("standard_form"), "standard")
+        dialect = clean_old_transcript(utterance.get("dialect_form"), "dialect")
 
+        # Drop rows emptied by cleaning (pure (())/&PII&/{non-verbal} utterances).
         if not (standard and dialect):
             continue
 
         dialect_eojeol_map = [
             {
                 "idx": int(eojeol["id"]),
-                "dialect": eojeol["eojeol"],
-                "standard": eojeol["standard"],
+                "dialect": clean_old_transcript(eojeol["eojeol"], "dialect"),
+                "standard": clean_old_transcript(eojeol["standard"], "standard"),
                 "pronunciation": None,
             }
             for eojeol in utterance["eojeolList"]

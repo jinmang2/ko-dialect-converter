@@ -9,6 +9,10 @@ from typing import Any
 from datasets import Dataset, DatasetDict, load_from_disk
 
 from .filtering import carries_dialect_marker, norm_levenshtein
+
+# Region label map lives in ``labels.py`` (single source of truth). Re-exported here for
+# back-compat with existing ``ko_dialect.data.dataset.DIALECT_LABELS`` / ``SUPPORTED_DO``.
+from .labels import DIALECT_LABELS, SUPPORTED_DO
 from .prosody import (
     add_sentence_final_marker,
     apply_eojeol_markers_to_text,
@@ -19,14 +23,6 @@ from .template import ChatTemplate, Direction
 logger = logging.getLogger(__name__)
 
 PROSODY_MODES = ("none", "sentence", "eojeol")
-
-DIALECT_LABELS: dict[str, int] = {
-    "standard": 0,
-    "gangwondo": 1,
-    "gyeongsangdo": 2,
-}
-
-SUPPORTED_DO: set[str] = {"gangwondo", "gyeongsangdo"}
 
 
 def load_dialect_dataset(path: str | Path) -> DatasetDict:
@@ -284,9 +280,11 @@ def build_classification_dataset(
     downsample_splits: tuple[str, ...] = ("train",),
     seed: int = 42,
 ) -> DatasetDict:
-    """Build 3-class classification dataset (a GRPO reward model).
+    """Build the classification dataset (a GRPO reward model).
 
-    Labels: standard=0, gangwondo=1, gyeongsangdo=2.
+    Labels come from ``DIALECT_LABELS`` (standard=0, then one id per region in
+    ``SUPPORTED_DO``); the class count follows whatever regions are present in the raw
+    data (3 for gangwon/gyeongsang, 6 for the full 5-region old_dialect corpus).
 
     The classifier is used as the GRPO style reward ``P(dialect) - P(standard)``, so
     its real job is to separate a genuine dialect translation (*True Attempt*) from an
