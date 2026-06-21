@@ -12,15 +12,23 @@ from ko_dialect.data.labels import DO_TO_LABEL
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Eval framework note (plan §3, ADR):
+# Eval framework note (plan §3, ADR): why checkpoint selection uses proxy-INDEPENDENT
+# signals only (reconstruction_bleu + qualitative gate), never J-score/TDR/DFS.
 #
-# J-score below is MONITORING ONLY — never use it as a checkpoint-selection
-# objective.  Reason (A4 / MO-GRPO arXiv:2509.22047): J-score aggregates axes
-# that overlap with the training rewards → selecting by J-score creates a
-# reward-proxy circularity that re-introduces the over-optimisation we are
-# trying to prevent.
+# J-score below is MONITORING ONLY — never a selection objective. It aggregates axes that
+# overlap with the training rewards, so selecting by it creates a reward-proxy circularity
+# that re-introduces over-optimisation. The grounding for this rule is OURS, from three
+# converging sources — NOT a prescription of any single paper:
+#   (a) MEASURED here: the 500-step GRPO run drove the classifier reward up (TDR past the
+#       gold's own TDR) while chrF/BLEU vs gold *dropped ~9–11 pts* — reward↑, fidelity↓.
+#       (memory grpo-reward-over-optimization; the over-optimised checkpoints are on disk.)
+#   (b) DOMAIN: for Gangwon, gold ≈ standard, so any classifier/n-gram proxy is especially
+#       easy to game (a near-copy already scores well) — the copy-bias is acute in-domain.
+#   (c) LITERATURE: DIA-REFINE (arXiv:2511.06680) shows n-gram/classifier metrics reward
+#       source-copying ("False Success"); MO-GRPO (arXiv:2509.22047) shows multi-objective
+#       reward circularity exists. These support the PREMISE; the selection RULE is our call.
 #
-# Selection must use proxy-independent signals only:
+# Proxy-independent selection signals:
 #   1. reconstruction_bleu  — dialect→standard reverse generation vs source
 #      (no classifier, no eojeol_map; Dual-RL / Luo et al. 2019)
 #   2. qualitative gate     — stratified human/LLM-judge samples (AC4)

@@ -70,7 +70,7 @@ set aside; those are listed, not yet verified).
 - **Authors / venue:** **Yixin Liu, Graham Neubig, John Wieting** — **NAACL 2021**, pp. 4262–4273 — **arXiv:2010.12771** — https://arxiv.org/abs/2010.12771 · PDF https://aclanthology.org/2021.naacl-main.337.pdf
 - **Cited in:** `src/ko_dialect/evaluation/leaderboard.py:46` (two orthogonal axes), `:177` (`harmonic_joint`).
 - **What the source says:** Direct-reward TST training using a **style-classifier reward + a semantic-similarity content reward** (no parallel data required) — the conceptual ancestor of this repo's style + content reward split.
-- **Verification note:** ⚠️ The repo attributes a **"harmonic-mean joint style↔content objective" to §3** — this specific *combination formula* (harmonic vs. product vs. weighted sum) is **unverified**. The `harmonic_joint` helper is best described as *our own* summary statistic inspired by this line of work. **TODO:** read §3 of the PDF and either confirm or soften the comment in `leaderboard.py:177`.
+- **Verification note:** ✅ **Resolved (PDF read directly).** §2.3 / Eq.10: the paper combines its four rewards by a **weighted sum** for training, and selects checkpoints by the **arithmetic mean** of style accuracy + BLEU (a *proxy-dependent* rule we deliberately avoid). **No harmonic mean appears anywhere** ("harmonic" count = 0). → `harmonic_joint` is **entirely our own** statistic; the prior "harmonic-mean joint objective (§3)" attribution was wrong and has been removed from `leaderboard.py:177`. The paper remains the conceptual ancestor of the style+content reward split, nothing more.
 
 ### A5. Text Style Transfer: A Review and Experimental Evaluation (the "TST trade-off" cite)
 
@@ -195,7 +195,7 @@ corrected attribution; the source files still need fixing (proposed, not yet app
 | 1 | `rewards/content.py:97`, `rewards/fluency.py:34`, `CLAUDE.md` | "Mind the Style Gap" = **Hallinan et al. 2025** | **Pauli, Augenstein & Assent**, EMNLP Findings 2025 (arXiv:2502.15022) |
 | 2 | `CLAUDE.md:80`, comments | "LLM-judge ≤ human on content" | "same-size LLM autoraters underperform style-aware content metrics" |
 | 3 | `leaderboard.py:47,157`, `CLAUDE.md:82` | 2010.12742 ⇒ "negatively correlated" | 2010.12742 is a **survey** (Hu et al. 2022); cite **Mukherjee & Dušek 2022, arXiv:2312.14708** for the negative-correlation claim |
-| 4 | `leaderboard.py:177` | "harmonic-mean joint objective (2010.12771 §3)" | combination formula **unverified** — confirm against PDF §3 or soften to "our summary statistic" |
+| 4 | `leaderboard.py:177` | "harmonic-mean joint objective (2010.12771 §3)" | ✅ **resolved** — PDF read: paper uses weighted-sum training + arithmetic-mean selection, no harmonic mean. `harmonic_joint` relabeled as entirely ours. |
 
 Other non-blocking actions: keep `eval_leaderboard.py --n ≥ 300` (A7); log sacreBLEU signature (A9).
 
@@ -208,7 +208,7 @@ Other non-blocking actions: keep `eval_leaderboard.py --n ≥ 300` (A7); log sac
 | DIA-REFINE | arXiv:2511.06680 | ✅ verified |
 | MO-GRPO | arXiv:2509.22047 | ⚠️ aggregation ✅, selection-claim = our inference |
 | Mind the Style Gap | arXiv:2502.15022 | ❌ author + finding corrected |
-| TST Direct Rewards | arXiv:2010.12771 | ⚠️ joint-formula unverified |
+| TST Direct Rewards | arXiv:2010.12771 | ✅ verified; harmonic is ours (paper = weighted-sum/arithmetic-mean) |
 | TST Review (survey) | arXiv:2010.12742 | ❌ reframed; add arXiv:2312.14708 |
 | Dual-RL | arXiv:1905.10060 | ✅ verified |
 | Koehn 2004 | aclanthology.org/W04-3250 | ✅ verified |

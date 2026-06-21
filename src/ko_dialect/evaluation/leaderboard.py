@@ -175,9 +175,11 @@ def harmonic_joint(values: list[float]) -> float:
     """Harmonic mean of (0,1] axis scores — 0 if any axis is ≤ 0.
 
     The harmonic mean punishes imbalance harder than the geometric mean (a model that
-    aces style but tanks content scores near 0) — our summary statistic for the joint
-    style↔content objective, in the spirit of direct-reward TST (arXiv:2010.12771; the
-    exact harmonic formula is ours, not verified against that paper). Unlike ``jscore`` this is meant
+    aces style but tanks content scores near 0). This is **our own** summary statistic:
+    verified against arXiv:2010.12771 (§2.3, Eq.10) — that paper combines its rewards by a
+    weighted *sum* for training and selects checkpoints by the *arithmetic mean* of style
+    accuracy + BLEU; it uses no harmonic mean. (We deliberately avoid their style-accuracy-in-
+    the-loop selection — that is proxy-dependent; see the metrics.py ADR.) Unlike ``jscore`` this is meant
     to *summarise* a run, but like jscore it must not drive checkpoint selection
     (circularity, plan §3 A4) — selection stays on the proxy-independent fidelity axis.
     """
