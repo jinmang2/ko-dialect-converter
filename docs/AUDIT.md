@@ -148,6 +148,8 @@ stubs in the core path. GRPO dataset present (357,116 train rows) with every col
 - `data/collator.py` — fixed `max_length=128` truncation with no over-length counter.
 - `scripts/eval_leaderboard.py:131` — unused `select_by` param (dead arg).
 - `scripts/inspect_classifier.py` — `_eojeol_diff` is positional, not Levenshtein (naming).
+- `scripts/report.py` — **not actually torch-free** despite its docstring intent: importing `ko_dialect.evaluation.report` triggers `evaluation/__init__.py` → `leaderboard` → `metrics` (`import torch`). On a torch-less CPU box the report fails at import before any logic runs. Make `evaluation/__init__.py` lazy or import the submodule path directly. (Resolves once `pip install -e .` provides torch.)
+- `evaluation/metrics.py:133` — `compute_chrf` uses chrF (not chrF++ / no word n-grams). Defensible default; note for paper-grade comparability. Not a bug.
 
 ---
 
