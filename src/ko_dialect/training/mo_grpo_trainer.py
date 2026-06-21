@@ -13,15 +13,20 @@ that single axis (exactly the style-axis domination we observed). The method:
     regardless of native scale/variance while preserving each objective's
     preference ordering, so no single axis can dominate.
 
-TRL 1.5.1 implements this exact algorithm natively in
+TRL 1.5.1 implements this algorithm natively in
 ``GRPOTrainer._generate_and_score_completions`` under
 ``multi_objective_aggregation="normalize_then_sum"`` (z-normalize each reward over the
 group via ``(grouped - mean_k) / (std_k + eps)``, then weighted ``nansum`` → advantage).
-The only requirement is that TRL must NOT re-normalize the summed advantage, which is
-why MO-GRPO needs ``scale_rewards="none"`` (the ``normalize_then_sum`` branch already
-divides by the cross-batch std, so leaving ``scale_rewards`` at the default would double-
-scale — but more importantly ``"none"`` is the paper-faithful setting: each objective is
-already unit-variance within its group before summation).
+
+We also force ``scale_rewards="none"``, but NOT for the reason an earlier version of this
+docstring claimed. Reading the TRL 1.5.1 source: the ``normalize_then_sum`` branch does
+**not reference ``scale_rewards`` at all** — it unconditionally re-standardizes the summed
+advantage across the batch (``(rewards - mean) / (std + 1e-4)``). So ``scale_rewards="none"``
+is a harmless **no-op** in this branch (it does not prevent any "double-scaling"); we set it
+only for clarity / forward-compatibility and to match the paper-faithful intent. Note this
+means TRL actually does per-objective-z-norm → sum → *a second batch-level normalize*,
+which is slightly beyond the pure paper ("normalize then sum"); the extra step is benign
+(a monotonic rescale of the whole advantage) and does not reintroduce axis domination.
 
 Rather than re-implement the deep, version-fragile ``_generate_and_score_completions``,
 this subclass simply *enforces* the two TRL settings that realize MO-GRPO and validates

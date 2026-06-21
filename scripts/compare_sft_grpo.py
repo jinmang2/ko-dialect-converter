@@ -19,7 +19,8 @@ Checkpoint-selection note (plan §3 A4; MO-GRPO arXiv:2509.22047):
     1. reconstruction_bleu  — dialect→standard reverse generation vs source
        (Dual-RL framework: Luo et al. 2019)
     2. qualitative gate     — stratified human/LLM-judge samples (AC4;
-       Mind the Style Gap arXiv:2502.15022 confirms LLM-judge ≤ human on content)
+       Mind the Style Gap arXiv:2502.15022: content metrics must be style-aware, and
+       same-size LLM autoraters underperform them — so treat LLM-judge as a weak proxy)
 
 copy_margin = chrF(gen, gold) − chrF(gen, source):
   Strips copy-bias for Gangwon where gold ≈ source (plan §3 A3).

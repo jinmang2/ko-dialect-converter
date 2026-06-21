@@ -31,8 +31,8 @@ def make_fluency_reward(model, tokenizer, max_length: int = 128, scale: float = 
     Reusing the GRPO base model as this reference LM is cheap and recommended (same
     tokenizer/domain); any frozen causal LM + tokenizer handle works.
 
-    Cite: the fluency axis of text-style-transfer evaluation, e.g. Hallinan et al.
-    2025, "Mind the Style Gap" (arXiv:2502.15022); LM-perplexity fluency is the
+    Cite: the fluency axis of text-style-transfer evaluation, e.g. Pauli, Augenstein
+    & Assent 2025, "Mind the Style Gap" (arXiv:2502.15022); LM-perplexity fluency is the
     standard naturalness proxy in TST (plan §4-D, Option D).
     """
     if scale <= 0:
