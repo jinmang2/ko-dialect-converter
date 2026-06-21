@@ -23,6 +23,25 @@ on the reviewers' PATH in-sandbox; the project runs in conda env `balaenoptera`.
 
 ---
 
+## Resolution status (updated post-audit)
+
+| Item | Status | Commit / note |
+|---|---|---|
+| **H1** report.py multi/v1 schema | ✅ **fixed** | classify+render multi schema; verified report.py now emits OVERALL+regions; +3 tests |
+| **H2** DO_NAME 5-region | ✅ **fixed** | all 5 Korean names; +2 tests (no English-code leak) |
+| **H3** speedrun seed | ✅ **fixed** | `random.Random(seed)` |
+| Citation errors (REFERENCES) | ✅ **fixed** | Mind-the-Style-Gap author + claim, 2010.12742 reframe, MO-GRPO attribution |
+| harmonic_joint §3 attribution | ✅ **resolved** | PDF read: paper uses weighted-sum/arithmetic-mean, no harmonic → relabeled as ours |
+| MO-GRPO scale_rewards docstring (M8) | ✅ **fixed** | corrected (no-op in TRL branch, not a double-scale guard) |
+| Proxy-independent selection rationale | ✅ **documented** | metrics.py ADR now cites our measured over-optimization + domain + DIA-REFINE |
+| **M2** is_identical `.get` | ✅ **fixed** | dataset.py (2 spots) |
+| **M10** quantize_eval CUDA guard | ✅ **fixed** | SystemExit on CPU |
+| **M11** serve_compare local_files_only | ✅ **fixed** | applied to model load |
+| **M13** SFT(0) KeyError guard | ✅ **fixed** | `.get` + skip-branch |
+| R1/R2 doc-sync, other MEDIUM/LOW | ⬜ open | see tables below |
+
+---
+
 ## HIGH findings (fix first)
 
 ### H1 — `report.py` silently drops the CURRENT leaderboard format → RESULTS.md is stale

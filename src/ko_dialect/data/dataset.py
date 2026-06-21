@@ -75,7 +75,9 @@ def build_sft_dataset(
     result: dict[str, Dataset] = {}
     for split_name, split_ds in dataset.items():
         if filter_identical:
-            split_ds = split_ds.filter(lambda x: not x["is_identical"])
+            split_ds = split_ds.filter(
+                lambda x: not x.get("is_identical", x["standard"] == x["dialect"])
+            )
         split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
 
         rows: list[dict[str, Any]] = []
@@ -152,7 +154,9 @@ def prosody_marker_coverage(
     coverage = {}
     for split_name, split_ds in dataset.items():
         if filter_identical:
-            split_ds = split_ds.filter(lambda x: not x["is_identical"])
+            split_ds = split_ds.filter(
+                lambda x: not x.get("is_identical", x["standard"] == x["dialect"])
+            )
         split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
 
         total = len(split_ds)
@@ -185,7 +189,9 @@ def build_grpo_dataset(
     result: dict[str, Dataset] = {}
     for split_name, split_ds in dataset.items():
         if filter_identical:
-            split_ds = split_ds.filter(lambda x: not x["is_identical"])
+            split_ds = split_ds.filter(
+                lambda x: not x.get("is_identical", x["standard"] == x["dialect"])
+            )
         split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
 
         rows: list[dict[str, Any]] = []

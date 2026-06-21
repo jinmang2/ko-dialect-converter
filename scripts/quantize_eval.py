@@ -84,6 +84,14 @@ def main(
     include_bnb4: bool = True,
 ) -> None:
     """Bench fp16 vs 4-bit for ``model_path`` and print the trade-off table."""
+    import torch
+
+    if not torch.cuda.is_available():
+        raise SystemExit(
+            "quantize_eval needs a CUDA GPU: it reports MEASURED peak VRAM + 4-bit latency, "
+            "which are meaningless on CPU (bnb 4-bit won't load; size_mb would fall back to "
+            "disk size, mixing units into a misleading table). Run on the GPU box."
+        )
     from datasets import load_from_disk
 
     from ko_dialect.data import ChatTemplate
@@ -101,8 +109,6 @@ def main(
     ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
     if cfg.n_samples:
         ds = ds.select(range(min(cfg.n_samples, len(ds))))
-
-    import torch
 
     template = ChatTemplate()
     disk_mb = directory_size_mb(model_path)  # fp16 on-disk reference (logged, not the footprint)

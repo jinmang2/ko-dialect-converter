@@ -78,8 +78,11 @@ class MultiAdapterTranslator:
         self.tok.padding_side = "left"
         self.template = ChatTemplate()
 
+        # base (outputs/sft_merged) is always a local dir by design; match the tokenizer's
+        # local_files_only so a missing/partial dir fails offline instead of silently
+        # triggering a Hub fetch for the model while the tokenizer hard-fails.
         model = AutoModelForCausalLM.from_pretrained(
-            base, torch_dtype=torch.float16, device_map="auto"
+            base, torch_dtype=torch.float16, device_map="auto", local_files_only=True
         )
         self.peft_model = None
         self.adapter_tags: set[str] = set()
