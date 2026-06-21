@@ -550,6 +550,7 @@ def main(
     verbose: bool = False,
     speedrun: bool = False,
     n_samples: int | None = None,
+    seed: int = 42,
     chunk_size: int = 1000,
     encoding: str = "utf-8",
     **kwargs,
@@ -581,7 +582,9 @@ def main(
     if not files:
         raise FileNotFoundError(f"No JSON files found under {data_path!r}")
     if speedrun:
-        files = random.sample(files, k=min(n_samples, len(files)))
+        # Seed the draw so a speedrun build is reproducible (the iteration path most
+        # likely to be re-run); a bare random.sample on the global RNG was unseeded.
+        files = random.Random(seed).sample(files, k=min(n_samples, len(files)))
 
     prepare_dialect_dataset(
         files,

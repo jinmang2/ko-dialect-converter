@@ -22,6 +22,13 @@ def classify_artifact(data: Any) -> str | None:
     """Classify a parsed eval-log JSON into a known report kind, or None if unrecognised."""
     if not isinstance(data, dict):
         return None
+    # Current multi-region payload (eval_leaderboard.py --all_regions / single region):
+    # schema "ko_dialect.leaderboard_multi/v1" nests a flat leaderboard under ``overall``
+    # and each ``per_region[region]`` (no top-level ranking/rows). Detect it first.
+    if str(data.get("schema", "")).startswith("ko_dialect.leaderboard_multi") or (
+        "per_region" in data and "overall" in data
+    ):
+        return "leaderboard_multi"
     if "ranking" in data and "rows" in data:
         return "leaderboard"
     if "baseline" in data and isinstance(data.get("rows"), list):
@@ -60,6 +67,25 @@ def render_leaderboard(data: dict) -> str:
     return "\n".join(lines)
 
 
+def render_leaderboard_multi(data: dict) -> str:
+    """Render a ``ko_dialect.leaderboard_multi/v1`` payload: OVERALL then each region.
+
+    ``overall`` and every ``per_region[region]`` are themselves flat leaderboard records
+    (target_do/ranking/rows/...), so each is delegated to :func:`render_leaderboard`.
+    """
+    n = data.get("n_samples", "?")
+    parts = [f"#### Cross-run leaderboard (n={n}/region, ranked by {data.get('select_by', '?')}↑)", ""]
+    if isinstance(data.get("overall"), dict):
+        parts.append(render_leaderboard(data["overall"]))
+        parts.append("")
+    for region in data.get("regions", []):
+        record = data.get("per_region", {}).get(region)
+        if isinstance(record, dict):
+            parts.append(render_leaderboard(record))
+            parts.append("")
+    return "\n".join(parts).rstrip()
+
+
 def render_quantization(data: dict) -> str:
     baseline = data.get("baseline", "?")
     scope = ""
@@ -89,6 +115,7 @@ def render_classifier(data: dict) -> str:
 
 
 _RENDERERS = {
+    "leaderboard_multi": ("Cross-run leaderboards (per-region + OVERALL)", render_leaderboard_multi),
     "leaderboard": ("Cross-run leaderboards", render_leaderboard),
     "quantization": ("Quantization", render_quantization),
     "classifier": ("Dialect classifier", render_classifier),

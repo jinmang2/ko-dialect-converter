@@ -5,9 +5,16 @@ from typing import Literal
 
 SYSTEM_PROMPT = "당신은 한국어 방언 변환 전문가입니다."
 
+# All five dialect regions in the corpus must map to a Korean name; otherwise
+# ``format_user`` falls back to the raw English ``do`` code (e.g. "jeollado"), leaking an
+# English token into an otherwise Korean prompt and degrading SFT/GRPO quality for the
+# old_dialect 5-region expansion. Mirrors REGION_MAP / DIALECT_LABELS.
 DO_NAME: dict[str, str] = {
     "gangwondo": "강원도",
     "gyeongsangdo": "경상도",
+    "jeollado": "전라도",
+    "jejudo": "제주도",
+    "chungcheongdo": "충청도",
 }
 
 Direction = Literal["std2dia", "dia2std"]

@@ -6,8 +6,30 @@ from ko_dialect.evaluation.report import (
     build_report,
     classify_artifact,
     render_leaderboard,
+    render_leaderboard_multi,
     render_quantization,
 )
+
+
+def _multi_v1_payload() -> dict:
+    """Minimal ``ko_dialect.leaderboard_multi/v1`` record (overall + one region)."""
+    flat = {
+        "target_do": "OVERALL",
+        "n_samples": 300,
+        "select_by": "reconstruction_bleu",
+        "best_run": "SFT",
+        "ranking": ["SFT", "grpo_500"],
+        "rows": {"SFT": {"reconstruction_bleu": 38.4}, "grpo_500": {"reconstruction_bleu": 37.1}},
+    }
+    region = {**flat, "target_do": "gangwondo", "n_samples": 150}
+    return {
+        "schema": "ko_dialect.leaderboard_multi/v1",
+        "select_by": "reconstruction_bleu",
+        "n_samples": 150,
+        "regions": ["gangwondo"],
+        "per_region": {"gangwondo": region},
+        "overall": flat,
+    }
 
 
 def test_classify_artifact_recognises_kinds():
@@ -35,6 +57,28 @@ def test_render_leaderboard_marks_best_and_lists_ranking():
     assert "SFT ★" in md  # best run marked
     assert "reconstruction_bleu↑" in md  # registry direction arrow
     assert md.index("SFT") < md.index("grpo_500")  # ranking order preserved
+
+
+def test_classify_artifact_recognises_multi_leaderboard():
+    # Regression (AUDIT H1): the current eval_leaderboard.py writes leaderboard_multi/v1
+    # (nested per_region/overall, no top-level ranking/rows). It must NOT be dropped.
+    assert classify_artifact(_multi_v1_payload()) == "leaderboard_multi"
+    # Detection also works without the schema string, via per_region+overall presence.
+    p = _multi_v1_payload()
+    del p["schema"]
+    assert classify_artifact(p) == "leaderboard_multi"
+
+
+def test_render_leaderboard_multi_includes_overall_and_each_region():
+    md = render_leaderboard_multi(_multi_v1_payload())
+    assert "OVERALL" in md and "gangwondo" in md
+    assert "SFT ★" in md  # best-run marker propagates through render_leaderboard
+
+
+def test_build_report_renders_multi_leaderboard_section():
+    md = build_report([("leaderboard_multi", _multi_v1_payload())])
+    assert "Cross-run leaderboards (per-region + OVERALL)" in md
+    assert "OVERALL" in md and "gangwondo" in md
 
 
 def test_render_quantization_lists_variants():

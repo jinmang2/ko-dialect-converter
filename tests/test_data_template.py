@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+from ko_dialect.data.labels import SUPPORTED_DO
 from ko_dialect.data.template import DO_NAME, ChatTemplate
 
 
 def test_do_name_mapping():
     assert DO_NAME["gangwondo"] == "강원도"
     assert DO_NAME["gyeongsangdo"] == "경상도"
+
+
+def test_do_name_covers_all_regions():
+    # Regression (AUDIT H2): every supported dialect region must map to a Korean name,
+    # else format_user leaks the English region code (e.g. "jeollado") into the prompt.
+    missing = SUPPORTED_DO - set(DO_NAME)
+    assert not missing, f"DO_NAME missing Korean names for {missing}"
+
+
+def test_format_user_has_no_english_region_code_for_any_region():
+    t = ChatTemplate()
+    for do in SUPPORTED_DO:
+        prompt = t.format_user("문장", do, "std2dia")
+        assert do not in prompt, f"English region code {do!r} leaked into prompt: {prompt}"
 
 
 def test_format_user_std2dia(mock_tokenizer):
