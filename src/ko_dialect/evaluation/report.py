@@ -73,8 +73,9 @@ def render_leaderboard_multi(data: dict) -> str:
     ``overall`` and every ``per_region[region]`` are themselves flat leaderboard records
     (target_do/ranking/rows/...), so each is delegated to :func:`render_leaderboard`.
     """
-    n = data.get("n_samples", "?")
-    parts = [f"#### Cross-run leaderboard (n={n}/region, ranked by {data.get('select_by', '?')}↑)", ""]
+    # The multi payload carries n per sub-record (overall/per_region), not at top level,
+    # so the per-region headers below show n; the group header just names the select metric.
+    parts = [f"#### Cross-run leaderboard (ranked by {data.get('select_by', '?')}↑)", ""]
     if isinstance(data.get("overall"), dict):
         parts.append(render_leaderboard(data["overall"]))
         parts.append("")
@@ -120,6 +121,22 @@ _RENDERERS = {
     "quantization": ("Quantization", render_quantization),
     "classifier": ("Dialect classifier", render_classifier),
 }
+
+
+def drop_superseded_leaderboards(
+    artifacts: list[tuple[str, dict]],
+) -> list[tuple[str, dict]]:
+    """Drop legacy flat ``leaderboard`` artifacts when a ``leaderboard_multi`` is present.
+
+    The current ``eval_leaderboard.py`` writes ``leaderboard_multi/v1`` (per-region +
+    OVERALL). Older single-region flat ``leaderboard/v2`` files may still linger in
+    ``eval_logs``; rendering both duplicates the table and surfaces stale numbers. When a
+    multi artifact exists it supersedes the flat ones, so keep only the multi.
+    """
+    has_multi = any(kind == "leaderboard_multi" for kind, _ in artifacts)
+    if not has_multi:
+        return artifacts
+    return [(kind, data) for kind, data in artifacts if kind != "leaderboard"]
 
 
 def build_report(artifacts: list[tuple[str, dict]], *, title: str = "KoDialect — results") -> str:

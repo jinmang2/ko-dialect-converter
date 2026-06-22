@@ -5,6 +5,7 @@ from __future__ import annotations
 from ko_dialect.evaluation.report import (
     build_report,
     classify_artifact,
+    drop_superseded_leaderboards,
     render_leaderboard,
     render_leaderboard_multi,
     render_quantization,
@@ -79,6 +80,23 @@ def test_build_report_renders_multi_leaderboard_section():
     md = build_report([("leaderboard_multi", _multi_v1_payload())])
     assert "Cross-run leaderboards (per-region + OVERALL)" in md
     assert "OVERALL" in md and "gangwondo" in md
+
+
+def test_drop_superseded_leaderboards_prefers_multi():
+    # When a multi-region leaderboard exists, the legacy flat one is dropped (no dup/stale).
+    flat = ("leaderboard", {"target_do": "gangwondo", "ranking": [], "rows": {}})
+    multi = ("leaderboard_multi", _multi_v1_payload())
+    quant = ("quantization", {"baseline": "fp16", "rows": []})
+    kept = drop_superseded_leaderboards([flat, multi, quant])
+    kinds = [k for k, _ in kept]
+    assert "leaderboard" not in kinds
+    assert "leaderboard_multi" in kinds and "quantization" in kinds
+
+
+def test_drop_superseded_leaderboards_keeps_flat_when_no_multi():
+    flat = ("leaderboard", {"target_do": "gangwondo", "ranking": [], "rows": {}})
+    kept = drop_superseded_leaderboards([flat])
+    assert kept == [flat]
 
 
 def test_render_quantization_lists_variants():

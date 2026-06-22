@@ -18,7 +18,11 @@ from pathlib import Path
 
 import fire
 
-from ko_dialect.evaluation.report import build_report, classify_artifact
+from ko_dialect.evaluation.report import (
+    build_report,
+    classify_artifact,
+    drop_superseded_leaderboards,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -26,6 +30,9 @@ logger = logging.getLogger(__name__)
 
 def _scope_key(kind: str, data: dict) -> str:
     """Identity used to keep only the latest artifact per logical scope."""
+    if kind == "leaderboard_multi":
+        regions = ",".join(data.get("regions", []))
+        return f"leaderboard_multi:{data.get('select_by', '?')}:{regions}"
     if kind == "leaderboard":
         return f"leaderboard:{data.get('target_do', '?')}"
     if kind == "quantization":
@@ -53,7 +60,7 @@ def main(eval_logs: str = "outputs/eval_logs", out: str = "docs/RESULTS.md") -> 
         if key not in latest:  # paths are newest-first, so the first seen is latest
             latest[key] = (kind, data)
 
-    artifacts = list(latest.values())
+    artifacts = drop_superseded_leaderboards(list(latest.values()))
     report = build_report(artifacts)
     logger.info("Recognised %d artifact(s): %s", len(artifacts), ", ".join(sorted(latest)))
 
