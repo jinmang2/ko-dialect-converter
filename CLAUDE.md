@@ -76,10 +76,10 @@ python scripts/bench_serving.py --model_path outputs/grpo_arm1_merged --target_d
 
 ### Evaluation references (grounding for the leaderboard)
 - **DIA-REFINE** (arXiv:2511.06680) — TDR + DFS metrics; n-gram metrics reward source-copying → motivates copy_margin.
-- **MO-GRPO** (arXiv:2509.22047) — J-score/TDR overlap training rewards → circularity; select on proxy-independent signals only.
-- **Mind the Style Gap** (arXiv:2502.15022) — copy_margin / J-score limits; LLM-judge ≤ human on content.
+- **MO-GRPO** (Ichihara et al., arXiv:2509.22047) — per-objective z-norm-then-sum aggregation (prevents one reward axis dominating). The "select on proxy-independent signals only" rule is *our* inference from its reward-hacking analysis, not an explicit paper recommendation (see docs/REFERENCES.md A2).
+- **Mind the Style Gap** (Pauli, Augenstein & Assent, EMNLP Findings 2025; arXiv:2502.15022) — copy_margin / J-score limits; content metrics must be *style-aware*; same-size LLM autoraters underperform style-aware metrics (NOT a blanket "LLM-judge ≤ human" claim).
 - **Koehn 2004** (EMNLP) — paired bootstrap resampling for chrF/BLEU significance (reliable ≥ ~300 sents).
-- **TST trade-off** (arXiv:2010.12771 / 2010.12742) — style vs content are negatively correlated → report a Pareto frontier + harmonic-mean joint, don't force one rank.
+- **TST trade-off** — style vs content in tension: survey arXiv:2010.12742 (Hu et al. 2022); negative-correlation finding arXiv:2312.14708 (Mukherjee, Kasner & Dušek 2022); direct-reward TST arXiv:2010.12771 → report a Pareto frontier + harmonic joint, don't force one rank. (Full grounding + corrections: docs/REFERENCES.md.)
 
 > **Note:** `scripts/`, `configs/`, `tests/` 디렉토리는 구축 완료. 평가는 `scripts/eval.py`
 > (config-driven, `configs/eval/default.yaml`)로 통합되어 있고, 양자화/학습 처리량 벤치는

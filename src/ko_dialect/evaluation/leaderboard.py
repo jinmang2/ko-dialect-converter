@@ -41,10 +41,12 @@ LEADERBOARD_METRICS = (
 # Proxy-independent default — see module docstring / plan §3 A4.
 DEFAULT_SELECT_BY = "reconstruction_bleu"
 
-# The two orthogonal axes of dialect conversion (text style-transfer literature: style
-# strength and content preservation are negatively correlated, so no single number wins
-# — On Learning Text Style Transfer with Direct Rewards, arXiv:2010.12771; TST review
-# arXiv:2010.12742). We report the Pareto frontier over them instead of forcing a rank.
+# The two orthogonal axes of dialect conversion. Style strength and content preservation
+# are in empirical tension in the text-style-transfer literature (Hu et al. 2022 survey,
+# arXiv:2010.12742, benchmarks the trade-off across 19 systems; the explicit negative-
+# correlation finding is Mukherjee, Kasner & Dušek 2022, arXiv:2312.14708; direct-reward
+# TST: Liu/Neubig/Wieting, arXiv:2010.12771). No single number wins, so we report the
+# Pareto frontier over them instead of forcing a rank. (See docs/REFERENCES.md A4/A5.)
 DIALECTNESS_AXIS = "copy_margin"  # copy-debiased conversion strength (gold vs source)
 FIDELITY_AXIS = "reconstruction_bleu"  # proxy-independent content preservation
 
@@ -173,8 +175,11 @@ def harmonic_joint(values: list[float]) -> float:
     """Harmonic mean of (0,1] axis scores — 0 if any axis is ≤ 0.
 
     The harmonic mean punishes imbalance harder than the geometric mean (a model that
-    aces style but tanks content scores near 0), which is why TST work uses it as the
-    joint style↔content objective (arXiv:2010.12771 §3). Unlike ``jscore`` this is meant
+    aces style but tanks content scores near 0). This is **our own** summary statistic:
+    verified against arXiv:2010.12771 (§2.3, Eq.10) — that paper combines its rewards by a
+    weighted *sum* for training and selects checkpoints by the *arithmetic mean* of style
+    accuracy + BLEU; it uses no harmonic mean. (We deliberately avoid their style-accuracy-in-
+    the-loop selection — that is proxy-dependent; see the metrics.py ADR.) Unlike ``jscore`` this is meant
     to *summarise* a run, but like jscore it must not drive checkpoint selection
     (circularity, plan §3 A4) — selection stays on the proxy-independent fidelity axis.
     """

@@ -36,6 +36,28 @@ def test_textcnn_config_defaults():
     cfg = TextCNNConfig()
     assert cfg.num_labels == 3
     assert len(cfg.filter_sizes) == len(cfg.num_filters)
+    # Default metadata must be 3-class and consistent with the head.
+    assert len(cfg.id2label) == 3
+    assert cfg.label2id == {"standard": 0, "gangwondo": 1, "gyeongsangdo": 2}
+
+
+def test_textcnn_config_six_class_metadata_matches_head():
+    # Regression: a 6-region (old_dialect) classifier must keep num_labels=6 and carry
+    # 6-entry label metadata. If id2label defaulted to the 3-entry map, transformers
+    # would derive num_labels=6 vs len(id2label)=3 and silently break the head.
+    cfg = TextCNNConfig(num_labels=6)
+    assert cfg.num_labels == 6
+    assert len(cfg.id2label) == 6
+    assert cfg.label2id["chungcheongdo"] == 5
+
+
+def test_textcnn_six_class_forward_shape():
+    cfg = TextCNNConfig(
+        vocab_size=100, embed_dim=16, num_filters=[4, 4], filter_sizes=[2, 3], num_labels=6
+    )
+    model = TextCNNForSequenceClassification(cfg)
+    out = model(torch.randint(0, 100, (4, 20)))
+    assert out.logits.shape == (4, 6)
 
 
 def test_textcnn_pad_token_zeroed(tiny_textcnn):

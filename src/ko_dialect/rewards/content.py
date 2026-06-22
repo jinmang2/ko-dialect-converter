@@ -94,7 +94,7 @@ def r_overcorrection(prompts, completions, standard, dialect, direction=None, **
 
     ``gold`` / ``source`` follow ``direction`` exactly as in :func:`r_copy_margin`.
 
-    Cite: Hallinan et al. 2025, "Mind the Style Gap" (arXiv:2502.15022), on over-stylization /
+    Cite: Pauli, Augenstein & Assent 2025, "Mind the Style Gap" (arXiv:2502.15022), on over-stylization /
     copy-bias in TST metrics; Fu et al. 2018 content-preservation budget; plan
     .omc/plans/ralplan-grpo-rewards.md §3 A3 (copy-margin) + Arm1 qualitative gate follow-up.
     """

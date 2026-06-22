@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Stage 2: Train TextCNN dialect classifier (3-class reward model for GRPO)."""
+"""Stage 2: Train TextCNN dialect classifier (GRPO style reward model).
+
+Class count is data-driven (``num_labels_for``): 3 for a gangwon/gyeongsang dataset,
+6 for the full 5-region old_dialect dataset.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +15,7 @@ from omegaconf import DictConfig
 from transformers import AutoTokenizer
 
 from ko_dialect.data import ClassifierCollator
+from ko_dialect.data.labels import num_labels_for
 from ko_dialect.models import TextCNNConfig, TextCNNForSequenceClassification
 from ko_dialect.tracking import setup_tracking
 from ko_dialect.training import (
@@ -56,7 +61,11 @@ def main(cfg: DictConfig) -> None:
     # Resolve class weights from the train split per cfg.model.class_weighting.
     model_cfg_node = cfg.get("model", {})
     weighting = str(model_cfg_node.get("class_weighting", "none"))
-    num_labels = 3
+    # Data-driven: a gangwon/gyeongsang-only dataset stays 3-class, while a full 5-region
+    # (old_dialect) dataset becomes 6-class — no global constant to bump, and existing
+    # 3-class checkpoints keep working when rebuilt from the same 2-region data.
+    num_labels = num_labels_for(ds["train"]["label"])
+    logger.info("Resolved num_labels=%d from training labels.", num_labels)
     class_weights = None
     if weighting == "manual":
         manual = model_cfg_node.get("class_weights")

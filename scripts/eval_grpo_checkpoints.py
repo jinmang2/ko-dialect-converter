@@ -284,25 +284,30 @@ def main(
             f" {br['copy_margin']:>+9.3f} {br['eojeol_accuracy']:>8.4f}"
         )
 
-    # Also print SFT buckets for comparison
-    print("\n--- Per-bucket breakdown: SFT(0) ---")
-    sft_b = eval_buckets(
-        all_outs["SFT(0)"],
-        gold,
-        src,
-        emaps,
-        target_do,
-        classifier,
-        cls_tok,
-        bucket_keys,
-    )
-    print(f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
-    for bk, br in sorted(sft_b.items()):
-        n_bk = bucket_keys.count(bk)
-        print(
-            f"{bk:28s} {n_bk:>4d} {br['tdr']:>8.4f} {br['chrf']:>8.3f}"
-            f" {br['copy_margin']:>+9.3f} {br['eojeol_accuracy']:>8.4f}"
+    # Also print SFT buckets for comparison (only if the SFT(0) stage was evaluated;
+    # guard avoids a KeyError that would otherwise fire only after the expensive sweep).
+    sft_outs = all_outs.get("SFT(0)")
+    if sft_outs is None:
+        print("\n(SFT(0) stage not evaluated — skipping per-bucket SFT breakdown.)")
+    else:
+        print("\n--- Per-bucket breakdown: SFT(0) ---")
+        sft_b = eval_buckets(
+            sft_outs,
+            gold,
+            src,
+            emaps,
+            target_do,
+            classifier,
+            cls_tok,
+            bucket_keys,
         )
+        print(f"{'bucket':28s} {'n':>4s} {'tdr':>8s} {'chrf':>8s} {'copy_mg':>9s} {'eojeol':>8s}")
+        for bk, br in sorted(sft_b.items()):
+            n_bk = bucket_keys.count(bk)
+            print(
+                f"{bk:28s} {n_bk:>4d} {br['tdr']:>8.4f} {br['chrf']:>8.3f}"
+                f" {br['copy_margin']:>+9.3f} {br['eojeol_accuracy']:>8.4f}"
+            )
 
     print(
         "\nNOTE: copy_margin = chrF(gen,gold) − chrF(gen,source).  "
