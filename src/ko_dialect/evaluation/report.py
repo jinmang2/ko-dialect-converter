@@ -116,7 +116,10 @@ def render_classifier(data: dict) -> str:
 
 
 _RENDERERS = {
-    "leaderboard_multi": ("Cross-run leaderboards (per-region + OVERALL)", render_leaderboard_multi),
+    "leaderboard_multi": (
+        "Cross-run leaderboards (per-region + OVERALL)",
+        render_leaderboard_multi,
+    ),
     "leaderboard": ("Cross-run leaderboards", render_leaderboard),
     "quantization": ("Quantization", render_quantization),
     "classifier": ("Dialect classifier", render_classifier),

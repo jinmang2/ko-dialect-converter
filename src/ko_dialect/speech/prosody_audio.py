@@ -58,7 +58,9 @@ class AudioProsodyExtractor:
         """
         if self._model is None:
             raise RuntimeError("F0 model not loaded — call load() first.")
-        raise NotImplementedError("F0 inference is wired in P4; use markers_from_f0 for the rule layer.")
+        raise NotImplementedError(
+            "F0 inference is wired in P4; use markers_from_f0 for the rule layer."
+        )
 
     @staticmethod
     def markers_from_f0(f0_series: Sequence[float]) -> str | None:

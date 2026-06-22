@@ -24,8 +24,13 @@ clean_old_transcript = prepare_data.clean_old_transcript
 
 def test_residual_dual_transcription_resolves_per_side():
     raw = "혹시 어떤 방법이 좋은지 (쫌)/(조금) 알려주실 수 있으세요?"
-    assert clean_old_transcript(raw, "standard") == "혹시 어떤 방법이 좋은지 조금 알려주실 수 있으세요?"
-    assert clean_old_transcript(raw, "dialect") == "혹시 어떤 방법이 좋은지 쫌 알려주실 수 있으세요?"
+    assert (
+        clean_old_transcript(raw, "standard")
+        == "혹시 어떤 방법이 좋은지 조금 알려주실 수 있으세요?"
+    )
+    assert (
+        clean_old_transcript(raw, "dialect") == "혹시 어떤 방법이 좋은지 쫌 알려주실 수 있으세요?"
+    )
 
 
 def test_multiple_dual_transcriptions_in_one_utterance():
@@ -81,7 +86,10 @@ def test_clean_to_empty_returns_empty_string():
 def test_orphan_bracket_from_cross_utterance_span_is_stripped():
     # Dual-transcription parens sometimes straddle the utterance boundary, leaving a
     # lone ( or ) whose partner lives in another utterance — drop the stray char.
-    assert clean_old_transcript("달걀만 갖고는 쫌) 부족(하드라고", "dialect") == "달걀만 갖고는 쫌 부족하드라고"
+    assert (
+        clean_old_transcript("달걀만 갖고는 쫌) 부족(하드라고", "dialect")
+        == "달걀만 갖고는 쫌 부족하드라고"
+    )
 
 
 def test_clean_handles_none_and_blank():

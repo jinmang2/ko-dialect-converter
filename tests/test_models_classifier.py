@@ -52,7 +52,9 @@ def test_textcnn_config_six_class_metadata_matches_head():
 
 
 def test_textcnn_six_class_forward_shape():
-    cfg = TextCNNConfig(vocab_size=100, embed_dim=16, num_filters=[4, 4], filter_sizes=[2, 3], num_labels=6)
+    cfg = TextCNNConfig(
+        vocab_size=100, embed_dim=16, num_filters=[4, 4], filter_sizes=[2, 3], num_labels=6
+    )
     model = TextCNNForSequenceClassification(cfg)
     out = model(torch.randint(0, 100, (4, 20)))
     assert out.logits.shape == (4, 6)
