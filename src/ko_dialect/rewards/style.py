@@ -30,7 +30,7 @@ def make_style_reward(classifier, tokenizer, max_length: int = 128):
 
         rewards = []
         for i, d in enumerate(do):
-            target_label = DO_TO_LABEL.get(str(d), 1)
+            target_label = DO_TO_LABEL[str(d)]
             r = float(probs[i, target_label] - probs[i, LABEL_STANDARD])
             # flip for dia→std direction
             if direction is not None and direction[i] == "dia2std":

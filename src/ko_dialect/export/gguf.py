@@ -98,7 +98,7 @@ def start_llama_server(
     host: str = "127.0.0.1",
     port: int = 8080,
     n_ctx: int = 2048,
-    n_gpu_layers: int = 35,
+    n_gpu_layers: int = -1,  # -1 = offload all layers; Qwen2.5-0.5B has 24 layers (not 35)
     chat_template: str | None = None,
     extra_args: list[str] | None = None,
 ) -> subprocess.Popen:

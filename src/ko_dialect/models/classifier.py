@@ -130,8 +130,10 @@ class TextCNNForSequenceClassification(PreTrainedModel):
         if labels is not None:
             weight = None
             if self.config.class_weights is not None:
+                # float32 for the weight tensor regardless of activation dtype (fp16);
+                # CrossEntropyLoss accepts a float32 weight with fp16 logits.
                 weight = torch.as_tensor(
-                    self.config.class_weights, dtype=logits.dtype, device=logits.device
+                    self.config.class_weights, dtype=torch.float32, device=logits.device
                 )
             loss = nn.CrossEntropyLoss(weight=weight)(logits, labels)
 

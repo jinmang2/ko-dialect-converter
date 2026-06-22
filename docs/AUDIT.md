@@ -38,7 +38,15 @@ on the reviewers' PATH in-sandbox; the project runs in conda env `balaenoptera`.
 | **M10** quantize_eval CUDA guard | ✅ **fixed** | SystemExit on CPU |
 | **M11** serve_compare local_files_only | ✅ **fixed** | applied to model load |
 | **M13** SFT(0) KeyError guard | ✅ **fixed** | `.get` + skip-branch |
-| R1/R2 doc-sync, other MEDIUM/LOW | ⬜ open | see tables below |
+| R1 quantization doc-sync | ✅ **fixed** | EXPERIMENTS.md §3 pins n=150 artifact as canonical |
+| R2 DeepSpeed claim | ✅ **fixed** | EXPERIMENTS.md §4 marked UNVERIFIED |
+| M1 prepare_data default path | ✅ **fixed** | default → raw_data/new_dialect + old-dialect runbook note |
+| M3 prosody `[ ]` convention | ✅ **fixed** | documented in prepare_data cleaning header |
+| M4 class_weights → float32 | ✅ **fixed** | classifier.py |
+| M5 eval_steps dead-config comment | ✅ **fixed** | classifier.yaml |
+| M9 hm requires normalize_rewards | ✅ **fixed** | grpo_trainer guard |
+| LOW r_style / epsilon_high / gguf / serving | ✅ **fixed** | KeyError lookup; Clip-Higher guard; n_gpu_layers=-1; `is not None` |
+| M6 sft early-stop default, M7 stage2 config style, B2 report.py torch-free | ⬜ open (intentional/risky — left by design) | see tables below |
 
 ---
 

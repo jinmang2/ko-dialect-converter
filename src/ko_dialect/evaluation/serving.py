@@ -84,7 +84,7 @@ def quantization_tradeoff(variants: list[dict], baseline: str = "fp16") -> dict:
         if base and v["name"] != baseline:
             if base.get("size_mb"):
                 row["size_pct"] = round(100 * v.get("size_mb", 0) / base["size_mb"], 1)
-            if v.get("latency_ms_p50"):
+            if v.get("latency_ms_p50") is not None:
                 row["speedup"] = round(base.get("latency_ms_p50", 0) / v["latency_ms_p50"], 2)
             if base.get("chrf") is not None and v.get("chrf") is not None:
                 row["chrf_drop"] = round(base["chrf"] - v["chrf"], 3)

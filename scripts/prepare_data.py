@@ -107,6 +107,7 @@ def write_json_file(path: Path, payload: dict) -> None:
 #   & ... &         PII anonymization token     — drop
 #   #word           dialectal interjection mark — strip the '#', keep the word
 #   ~               filler lengthening (아~)     — KEPT (prosodic, identical on both sides)
+#   [ ]             orphan square brackets      — drop (caught by _RE_ORPHAN)
 _RE_DUAL = re.compile(r"\(([^()]*)\)/\(([^()]*)\)")  # group1=dialect, group2=standard
 _RE_DOUBLE_PAREN = re.compile(r"\(\([^()]*\)\)")
 _RE_SINGLE_PAREN = re.compile(r"\([^()]*\)")
@@ -555,7 +556,9 @@ def main(
     encoding: str = "utf-8",
     **kwargs,
 ) -> None:
-    data_path = Path(data_path or Path(__file__).parents[1] / "data")
+    # Default points at the new-dialect corpus subtree. For old-dialect runs pass
+    # --data_path raw_data/old_dialect --use_old_format (each subtree is single-format).
+    data_path = Path(data_path or Path(__file__).parents[1] / "raw_data" / "new_dialect")
     output_dir = Path(output_dir or Path(__file__).parents[1] / "outputs")
 
     if n_samples or speedrun:

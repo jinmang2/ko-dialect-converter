@@ -9,6 +9,8 @@ logging_steps: 50
 # save strategy/steps auto-follow eval when load_best_model_at_end=true,
 # so just switch eval_strategy below (epoch | steps) and it stays consistent.
 eval_strategy: epoch
+# eval_steps and save_steps are only active when the corresponding strategy is "steps";
+# they are dead (ignored by the Trainer) when eval_strategy/save_strategy is "epoch".
 eval_steps: 100
 load_best_model_at_end: true
 # Select on macro-F1 (balanced separation for the reward model), not accuracy which

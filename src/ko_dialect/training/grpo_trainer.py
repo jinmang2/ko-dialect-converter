@@ -208,6 +208,14 @@ def train(
                 "aggregation='hm' needs the list of per-axis reward_funcs to combine; "
                 "got a single callable."
             )
+        # Harmonic mean is only meaningful on (0, 1] inputs; enforce normalization.
+        if not cfg.normalize_rewards:
+            raise ValueError(
+                "aggregation='hm' requires normalize_rewards=True so each reward axis is "
+                "on a (0, 1] basis before the harmonic mean is computed. Without it, "
+                "axes with different native ranges (e.g. r_style ∈ [-1,1]) produce a "
+                "meaningless result."
+            )
         weights = reward_weights or [1.0] * len(reward_funcs)
         reward_funcs = build_joint_hm_reward(reward_funcs, weights)
         reward_weights = None  # single joint reward carries no per-axis weighting
@@ -225,6 +233,13 @@ def train(
 
     # Weights only apply to a multi-reward list; a single callable carries no weighting.
     grpo_reward_weights = reward_weights if isinstance(reward_funcs, list) else None
+
+    # DAPO Clip-Higher invariant: epsilon_high must be >= epsilon.
+    if cfg.epsilon_high is not None and cfg.epsilon_high < cfg.epsilon:
+        raise ValueError(
+            f"DAPO Clip-Higher requires epsilon_high >= epsilon, but got "
+            f"epsilon_high={cfg.epsilon_high} < epsilon={cfg.epsilon}."
+        )
 
     grpo_args = TRLGRPOConfig(
         output_dir=cfg.output_dir,
