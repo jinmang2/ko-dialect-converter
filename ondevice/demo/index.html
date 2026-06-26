@@ -1,0 +1,187 @@
+<!doctype html>
+<!--
+  KoDialect On-Device demo — 정적 1파일, 빌드 없음.
+  방언 문장 붙여넣기 → llama-server /completion(stream) → 표준어 + 라이브 tok/s.
+
+  핵심: prompt 패리티. 학습/데스크탑 평가와 동일한 Qwen2.5 ChatML 을 클라이언트에서
+  직접 구성한다 (system = "당신은 한국어 방언 변환 전문가입니다.",
+  user = "다음 {지역} 사투리를 표준어로 바꿔줘:\n{문장}"). 이게 어긋나면 폰 출력이
+  데스크탑 채점과 동치가 안 됨 (brief §11 / O3).
+
+  수치 출처: 응답 stop 청크의 timings 객체.
+    TTFT  = 첫 토큰 도착(client-side)
+    prefill = timings.prompt_per_second        (tok/s)
+    decode  = timings.predicted_per_second     (tok/s)
+    tokens  = timings.prompt_n / predicted_n
+  ⚠ 데모 수치는 "체감/녹화용". 포폴 표 수치는 항상 bench/ 의 llama-bench median (brief §4b).
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KoDialect On-Device</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --mut:#8b949e; --acc:#58a6ff; --ok:#3fb950; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 -apple-system,system-ui,"Apple SD Gothic Neo",sans-serif;
+         background:var(--bg); color:var(--fg); padding:16px; max-width:760px; margin:0 auto; }
+  h1 { font-size:18px; margin:4px 0 2px; }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:14px; }
+  label { font-size:12px; color:var(--mut); display:block; margin:10px 0 4px; }
+  input, textarea, select { width:100%; background:var(--panel); color:var(--fg);
+         border:1px solid var(--line); border-radius:8px; padding:9px 11px; font:inherit; }
+  textarea { height:5em; resize:vertical; }
+  .row { display:flex; gap:10px; }
+  .row > * { flex:1; }
+  button { margin-top:12px; width:100%; background:var(--acc); color:#0d1117; border:0;
+           border-radius:8px; padding:11px; font-weight:700; font-size:15px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  pre { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px;
+        white-space:pre-wrap; word-break:break-word; min-height:3em; margin-top:14px; }
+  .metrics { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .chip { background:var(--panel); border:1px solid var(--line); border-radius:999px;
+          padding:5px 12px; font-size:13px; }
+  .chip b { color:var(--ok); font-variant-numeric:tabular-nums; }
+  .err { color:#f85149; font-size:13px; margin-top:8px; }
+  details { margin-top:10px; color:var(--mut); font-size:12px; }
+  code { background:var(--panel); padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+  <h1>KoDialect · 방언 → 표준어 (On-Device)</h1>
+  <div class="sub">Qwen2.5-0.5B SFT · GGUF · llama-server. 데모 수치는 체감용 — 표 수치는 <code>bench/</code> median.</div>
+
+  <div class="row">
+    <div>
+      <label>llama-server endpoint</label>
+      <input id="ep" value="http://127.0.0.1:8080">
+    </div>
+    <div>
+      <label>방언 지역</label>
+      <select id="region">
+        <option value="강원도">강원도 (gangwondo)</option>
+        <option value="경상도">경상도 (gyeongsangdo)</option>
+        <option value="전라도">전라도 (jeollado)</option>
+        <option value="제주도">제주도 (jejudo)</option>
+        <option value="충청도">충청도 (chungcheongdo)</option>
+      </select>
+    </div>
+  </div>
+
+  <label>방언 문장 붙여넣기</label>
+  <textarea id="in" placeholder="예) 밥 뭇나? / 어데 가노?"></textarea>
+
+  <div class="row">
+    <div>
+      <label>n_predict</label>
+      <input id="np" type="number" value="256" min="1">
+    </div>
+    <div>
+      <label>디코딩</label>
+      <select id="dec">
+        <option value="greedy">greedy (temp=0, 데스크탑 패리티)</option>
+        <option value="sample">sample (temp=0.7)</option>
+      </select>
+    </div>
+  </div>
+
+  <button id="go" onclick="run()">실행</button>
+  <div id="err" class="err"></div>
+  <pre id="out"></pre>
+  <div class="metrics" id="m"></div>
+
+  <details>
+    <summary>전송되는 실제 prompt 보기 (ChatML)</summary>
+    <pre id="dbg" style="font-size:11px"></pre>
+  </details>
+
+<script>
+const SYSTEM = "당신은 한국어 방언 변환 전문가입니다.";
+
+// 학습/평가와 1:1 동일한 Qwen2.5 ChatML 구성 (src/ko_dialect/data/template.py).
+function buildPrompt(region, source) {
+  const user = `다음 ${region} 사투리를 표준어로 바꿔줘:\n${source}`;
+  return `<|im_start|>system\n${SYSTEM}<|im_end|>\n` +
+         `<|im_start|>user\n${user}<|im_end|>\n` +
+         `<|im_start|>assistant\n`;
+}
+
+async function run() {
+  const $ = id => document.getElementById(id);
+  const ep = $("ep").value.replace(/\/+$/, "");
+  const src = $("in").value.trim();
+  $("err").textContent = ""; $("out").textContent = ""; $("m").innerHTML = "";
+  if (!src) { $("err").textContent = "방언 문장을 입력하세요."; return; }
+
+  const prompt = buildPrompt($("region").value, src);
+  $("dbg").textContent = prompt;
+  const greedy = $("dec").value === "greedy";
+  const body = {
+    prompt,
+    n_predict: parseInt($("np").value, 10) || 256,
+    stream: true,
+    cache_prompt: true,
+    temperature: greedy ? 0 : 0.7,
+    seed: 0,
+    stop: ["<|im_end|>", "<|im_start|>"]
+  };
+
+  $("go").disabled = true;
+  const t0 = performance.now();
+  let tFirst = null, out = "", buf = "", nTok = 0;
+  try {
+    const r = await fetch(ep + "/completion", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status} ${r.statusText}`);
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    while (true) {
+      const { done, value } = await rd.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      // SSE 이벤트는 빈 줄로 구분; "data:" 라인을 누적 파싱
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        let j;
+        try { j = JSON.parse(payload); } catch { continue; }
+        if (j.content) {
+          if (tFirst === null) tFirst = performance.now();
+          out += j.content; nTok++;
+          $("out").textContent = out;
+        }
+        if (j.stop || j.stopped_eos || j.stopped_limit || j.stopped_word) {
+          const T = j.timings || {};
+          const ttft = tFirst ? (tFirst - t0) : (performance.now() - t0);
+          const wall = (performance.now() - t0) / 1000;
+          const decode = T.predicted_per_second != null ? T.predicted_per_second.toFixed(1)
+                       : (nTok / Math.max(wall, 1e-6)).toFixed(1);
+          const prefill = T.prompt_per_second != null ? T.prompt_per_second.toFixed(1) : "—";
+          const pn = T.prompt_n != null ? T.prompt_n : "—";
+          const cn = T.predicted_n != null ? T.predicted_n : nTok;
+          $("m").innerHTML =
+            `<span class="chip">TTFT <b>${ttft.toFixed(0)}</b> ms</span>` +
+            `<span class="chip">prefill <b>${prefill}</b> tok/s</span>` +
+            `<span class="chip">decode <b>${decode}</b> tok/s</span>` +
+            `<span class="chip">prompt <b>${pn}</b> tok</span>` +
+            `<span class="chip">gen <b>${cn}</b> tok</span>`;
+        }
+      }
+    }
+    if (!out) $("err").textContent = "출력이 비었습니다. endpoint/모델/stop 토큰을 확인하세요.";
+  } catch (e) {
+    $("err").textContent = "요청 실패: " + e.message +
+      " — endpoint 확인 (adb forward tcp:8080 tcp:8080 했는지, 서버가 떠 있는지).";
+  } finally {
+    $("go").disabled = false;
+  }
+}
+</script>
+</body>
+</html>

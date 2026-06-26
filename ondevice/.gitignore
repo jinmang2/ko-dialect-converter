@@ -1,0 +1,9 @@
+# Generated / large on-device artifacts — never commit (CLAUDE.md: no *.gguf, no data json)
+models/
+*.gguf
+bench/logs/
+eval/outputs/
+report/figs/
+report/pareto.json
+eval/quality.jsonl
+data/eval_prompts.jsonl
