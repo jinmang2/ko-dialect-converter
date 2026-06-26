@@ -28,14 +28,52 @@ ondevice/
 
 ## 액션 플랜 — 네가 직접 할 일 (순서대로)
 
+### 🔒 검증 게이트 (validity gate) — 폰 측정 전에 반드시 통과
+폰 채점이 데스크탑 채점과 **같은 비교**가 되려면 입력·출력·평가셋이 모두 고정돼야 함.
+세 축이 잠겨야 "양자화로 chrF N pt 깎임 vs fp16"이 정당해진다.
+
+1. **입력 패리티** — ChatML 바이트 동일 (`test_chatml_parity_with_training_template`, 통과 ✅).
+2. **평가셋 동일성** — `make_eval_prompts.py` 가 결정적 first-n 선택 + 지역별 SHA256 `id_hash`
+   를 출력/manifest 기록. 재실행 시 hash 동일해야 함. fp16 레퍼런스(`desktop_ref.py`)도
+   **같은 manifest** 로 채점 → 같은 셋 비교.
+3. **디코딩 결정성** — 채점 경로(gen_capture/desktop_ref)는 greedy 고정
+   (`decoding.py`: temp=0·top_k=1·seed=0·동일 stop). 데모는 체감용이라 무관.
+4. **출력 token-id 동치** — desktop llama.cpp vs (forwarded) phone llama.cpp 의 생성 token-id
+   동일 (`check_token_equivalence.py`). 입력 byte-parity + 출력 token 동치 ⇒ 폰 채점 = 데스크탑 채점.
+
+```bash
+# (오프라인, 지금 통과) 입력 패리티·결정성·hash 재현성
+PY=~/miniconda3/envs/balaenoptera/bin/python
+$PY -m pytest ondevice/tests/test_ondevice.py -q       # 7 passed, 1 skipped(=live)
+# (라이브, 두 서버 떠 있을 때) 출력 token-id 동치 — 같은 gguf 를 데스크탑/폰에 각각 serve
+ONDEVICE_DESKTOP_EP=http://127.0.0.1:8081 ONDEVICE_PHONE_EP=http://127.0.0.1:8080 \
+  $PY -m pytest ondevice/tests/test_ondevice.py::test_token_equivalence_desktop_vs_phone_live -q
+# 또는 스크립트로: python ondevice/eval/check_token_equivalence.py \
+#   --desktop http://127.0.0.1:8081 --phone http://127.0.0.1:8080 --k 5
+```
+> 게이트 4가 FAIL 이면 폰 수치는 데스크탑과 비교 불가 — 원인(토크나이저/샘플러/빌드) 먼저 잡는다.
+
 ### 0단계 · 데스크탑: 모델 변형 만들기 (~10분, GPU 불요)
 ```bash
 conda activate balaenoptera
 # llama.cpp 가 없으면: git clone https://github.com/ggml-org/llama.cpp && (cd llama.cpp && cmake -B build && cmake --build build -j)
 python ondevice/quantize/sweep.py --merged outputs/sft_merged \
     --variants Q8_0,Q5_K_M,Q4_K_M,Q4_K_S --out_dir ondevice/models
-# 고정 평가셋 생성 (한 번)
+# 고정 평가셋 생성 (한 번) — id_hash 출력됨, manifest 기록
 python ondevice/eval/make_eval_prompts.py --regions gangwondo,gyeongsangdo --n 150
+# fp16 레퍼런스를 같은 평가셋에 1회 채점 (양자화 비용의 기준선)
+python ondevice/eval/desktop_ref.py --model_path outputs/sft_merged
+python ondevice/eval/score_offline.py --variant desktop_fp16 --measurements None
+```
+```python
+cd ~/ko_dialect
+git clone https://github.com/ggml-org/llama.cpp
+cd llama.cpp
+cmake -B build -DGGML_CUDA=ON          # 2060 쓸 거면 CUDA on (convert엔 불필요하지만 quantize/bench 빠름)
+cmake --build build -j --config Release
+cd ..
+# convert 스크립트가 파이썬 의존성 필요로 할 수 있음:
+pip install -r llama.cpp/requirements.txt
 ```
 
 ### 1단계 · 폰 시동 확인 (★ 먼저 이게 되는지) — Termux

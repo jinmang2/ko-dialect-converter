@@ -7,3 +7,4 @@ report/figs/
 report/pareto.json
 eval/quality.jsonl
 data/eval_prompts.jsonl
+data/eval_manifest.json

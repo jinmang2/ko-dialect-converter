@@ -43,6 +43,26 @@ def _score(outputs: list[str], references: list[str]) -> dict[str, float]:
     }
 
 
+def _vs_reference(out_json: str, ref_variant: str, overall: dict) -> None:
+    """Print the quant-cost delta vs a previously-scored reference (e.g. desktop_fp16)."""
+    path = Path(out_json)
+    if not path.exists() or overall.get("chrF") is None:
+        return
+    ref = None
+    for row in read_jsonl(path):
+        if row.get("variant") == ref_variant and row.get("overall", {}).get("chrF") is not None:
+            ref = row["overall"]
+    if ref is None:
+        print(f"  (no '{ref_variant}' reference scored yet — run desktop_ref.py + score it first)")
+        return
+    dchrf = overall["chrF"] - ref["chrF"]
+    dbleu = overall["recon_bleu"] - ref["recon_bleu"]
+    print(
+        f"  vs {ref_variant}: ΔchrF={dchrf:+.2f} pt  Δrecon_bleu={dbleu:+.2f}  "
+        f"(quantization cost; same fixed set + greedy)"
+    )
+
+
 def score(
     variant: str,
     outputs: str | None = None,
@@ -50,6 +70,7 @@ def score(
     measurements: str | None = "ondevice/bench/logs/measurements.jsonl",
     out_json: str = "ondevice/eval/quality.jsonl",
     merge: bool = True,
+    vs: str = "desktop_fp16",
 ) -> None:
     """Score one variant's generations; print per-region + overall; merge into measurements."""
     outputs = outputs or f"ondevice/eval/outputs/{variant}.jsonl"
@@ -83,6 +104,8 @@ def score(
     print(
         f"  {'OVERALL':14s} n={len(all_outs):4d}  chrF={overall['chrF']}  recon_bleu={overall['recon_bleu']}"
     )
+    if vs and variant != vs:
+        _vs_reference(out_json, vs, overall)
 
     # append summary
     out_path = Path(out_json)

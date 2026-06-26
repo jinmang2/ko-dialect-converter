@@ -9,8 +9,11 @@ prompt is byte-identical to the canonical training template.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 _HERE = Path(__file__).resolve()
 _OND = _HERE.parents[1]
@@ -84,3 +87,61 @@ def test_chatml_parity_with_training_template():
         f"<|im_start|>assistant\n"
     )
     assert manual == canon
+
+
+# --------------------------------------------------------------------------- #
+# VALIDITY GATE
+# --------------------------------------------------------------------------- #
+def test_decoding_is_deterministic_greedy():
+    """The scoring path must be greedy + seeded; drift here invalidates quant-vs-fp16."""
+    from decoding import GREEDY_SEED, hf_greedy_kwargs, llamacpp_greedy_body
+
+    body = llamacpp_greedy_body("x", n_predict=32)
+    assert body["temperature"] == 0.0
+    assert body["top_k"] == 1
+    assert body["top_p"] == 1.0 and body["min_p"] == 0.0
+    assert body["seed"] == GREEDY_SEED
+    assert body["return_tokens"] is True  # needed by the equivalence check
+
+    hf = hf_greedy_kwargs()
+    assert hf["do_sample"] is False and hf["num_beams"] == 1
+
+
+def test_eval_set_hash_is_reproducible_and_content_sensitive():
+    """Same selected pairs → same id_hash; any change → different hash (reproducibility)."""
+    from make_eval_prompts import _region_hash
+
+    samples = [
+        {"source": "밥 뭇나?", "reference": "밥 먹었니?"},
+        {"source": "어데 가노?", "reference": "어디 가니?"},
+    ]
+    h1 = _region_hash(samples)
+    h2 = _region_hash([dict(s) for s in samples])  # identical content
+    assert h1 == h2 and len(h1) == 64
+    # order change → different hash
+    assert _region_hash(list(reversed(samples))) != h1
+    # content change → different hash
+    perturbed = [{"source": "밥 뭇나?", "reference": "밥 먹었어?"}, samples[1]]
+    assert _region_hash(perturbed) != h1
+
+
+def test_strip_stop_trims_chatml_markers():
+    from decoding import strip_stop
+
+    assert strip_stop("밥 먹었니?<|im_end|>\n자취") == "밥 먹었니?"
+    assert strip_stop("  깔끔  ") == "깔끔"
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("ONDEVICE_DESKTOP_EP") and os.environ.get("ONDEVICE_PHONE_EP")),
+    reason="set ONDEVICE_DESKTOP_EP and ONDEVICE_PHONE_EP (both serving the same gguf) to run",
+)
+def test_token_equivalence_desktop_vs_phone_live():
+    """Live gate: desktop llama.cpp vs forwarded phone llama.cpp must emit identical ids."""
+    from check_token_equivalence import check
+
+    assert check(
+        desktop=os.environ["ONDEVICE_DESKTOP_EP"],
+        phone=os.environ["ONDEVICE_PHONE_EP"],
+        k=int(os.environ.get("ONDEVICE_EQUIV_K", "5")),
+    )

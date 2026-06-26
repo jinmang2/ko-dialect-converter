@@ -39,10 +39,16 @@
 - **데스크탑 대조(MEASURED, §8.3)**: RTX 2060 Turing 에선 NF4가 fp16의 ~0.5× (dequant 커널 부재).
 - **폰 실측 결과**: _TBD — 맞든 틀리든 기록. 뒤집히면 "커널 지원이 속도를 지배"를 반대 HW에서 재입증._
 
-## 5. 품질 동치성 (양자화 손실)
+## 5. 품질 동치성 (양자화 손실) — validity gate 위에서만 유효
 
-- 데스크탑 fp16 출력 vs 폰 GGUF 출력, 동일 고정셋·동일 디코딩(greedy/seed=0).
-- chrF/recon_bleu Δ: _TBD (양자화로 품질 얼마 깎였나 1줄)._
+**검증 게이트(폰 측정 전 통과 필수):**
+1. 입력 ChatML 바이트 패리티 — MEASURED ✅ (`test_chatml_parity…`).
+2. 평가셋 동일성 — 결정적 first-n + 지역별 SHA256 `id_hash` (manifest). 강원=`_TBD`, 경상=`_TBD`.
+3. 디코딩 결정성 — greedy temp=0/top_k=1/seed=0, 동일 stop (`decoding.py`) — MEASURED ✅ (config test).
+4. 출력 token-id 동치 — desktop llama.cpp == phone llama.cpp — _TBD (라이브, `check_token_equivalence.py`)._
+
+**양자화 손실 (게이트 통과 후):** 동일 고정셋·동일 greedy 로 fp16 레퍼런스(`desktop_fp16`) 대비 Δ.
+- ΔchrF / Δrecon_bleu (vs fp16): _TBD — `score_offline.py` 가 자동 출력 (quantization cost)._
 
 ## 6. Tier2 (후속, 미수행) — KV cache 관리
 
