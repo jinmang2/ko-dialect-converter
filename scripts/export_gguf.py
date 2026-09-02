@@ -59,7 +59,7 @@ def serve(
     host: str = "127.0.0.1",
     port: int = 8080,
     n_ctx: int = 2048,
-    n_gpu_layers: int = 35,
+    n_gpu_layers: int = -1,
 ) -> None:
     """Start llama-server. Ctrl-C to stop."""
     proc = start_llama_server(gguf, llama_cpp_dir, host, port, n_ctx, n_gpu_layers)
