@@ -44,11 +44,10 @@ import os
 import shutil
 
 import fire
-from datasets import load_from_disk
 from transformers import AutoTokenizer
 
 from ko_dialect.data import ChatTemplate
-from ko_dialect.evaluation import resolve_best_checkpoint
+from ko_dialect.evaluation import load_eval_samples, resolve_best_checkpoint
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -87,17 +86,8 @@ def _ensure_nvcc() -> None:
 
 
 def _load_eval_samples(raw_dataset_path, split, target_do, direction, n):
-    ds = load_from_disk(raw_dataset_path)[split]
-    ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
-    if n and n < len(ds):
-        ds = ds.select(range(n))
-    template = ChatTemplate()
-    rows = []
-    for s in ds:
-        source = s["standard"] if direction == "std2dia" else s["dialect"]
-        reference = s["dialect"] if direction == "std2dia" else s["standard"]
-        rows.append({"source": source, "reference": reference})
-    return rows, template
+    rows = load_eval_samples(raw_dataset_path, split, target_do, direction, n)
+    return rows, ChatTemplate()
 
 
 def _gen_vllm(model_path, prompts, max_new_tokens, gpu_mem, max_model_len, max_num_seqs):

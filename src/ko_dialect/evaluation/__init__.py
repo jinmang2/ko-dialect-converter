@@ -3,6 +3,7 @@ from .config import EvalConfig
 from .generation import (
     DEFAULT_BASE_MODEL,
     generate_batched,
+    load_eval_samples,
     load_generation_model,
     resolve_eval_model,
 )
@@ -38,6 +39,7 @@ __all__ = [
     "EvalConfig",
     "DEFAULT_BASE_MODEL",
     "generate_batched",
+    "load_eval_samples",
     "load_generation_model",
     "resolve_eval_model",
     "RunSpec",

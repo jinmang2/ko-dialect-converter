@@ -30,6 +30,38 @@ class _Generator(Protocol):
     def generate(self, **kwargs: Any) -> Any: ...
 
 
+def load_eval_samples(
+    raw_dataset_path: str,
+    split: str,
+    target_do: str,
+    direction: str,
+    n: int | None = None,
+) -> list[dict[str, str]]:
+    """Load the fixed ``(source, reference)`` eval pairs for one region.
+
+    Rows where dialect == standard (``is_identical``) carry no transfer signal, so they are
+    dropped before selection. Selection is a deterministic ``first-n`` — never a shuffle —
+    so the same arguments always yield the same set, which is what lets the on-device
+    harness fingerprint it (``ondevice/eval/make_eval_prompts.py``) and compare a phone
+    score against a desktop score.
+
+    ``direction`` picks which column is the input: ``std2dia`` translates standard → dialect,
+    anything else (``dia2std``) goes the other way.
+    """
+    from datasets import load_from_disk
+
+    ds = load_from_disk(raw_dataset_path)[split]
+    ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
+    if n and n < len(ds):
+        ds = ds.select(range(n))
+    rows = []
+    for sample in ds:
+        source = sample["standard"] if direction == "std2dia" else sample["dialect"]
+        reference = sample["dialect"] if direction == "std2dia" else sample["standard"]
+        rows.append({"source": source, "reference": reference})
+    return rows
+
+
 def resolve_eval_model(model_path: str) -> tuple[str, bool]:
     """Resolve an eval target to ``(path, is_adapter)``.
 
