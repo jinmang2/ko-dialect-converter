@@ -119,7 +119,10 @@ exclude = [".git", "__pycache__", "*.egg-info", "llama.cpp", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
-ignore = ["E501", "F821"]
+# F821 (undefined name) stays ON: it is the only rule that catches an import removed
+# by `ruff --fix` while its use was still being written, which is a real break that
+# py_compile cannot see. The tree is clean under it.
+ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-local-folder = ["app", "src"]

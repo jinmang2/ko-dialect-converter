@@ -157,3 +157,59 @@ def test_evaluate_all_has_bleu_chrf(tiny_textcnn):
     assert "tdr" in result
     assert "eojeol_accuracy" in result
     assert "dfs" not in result  # embed_fn=None → dfs skipped
+
+
+# ---------------------------------------------------------------------------
+# Dual-prompt reconstruction: the plain-prompt score is kept for continuity, the
+# training-format score is the ranking basis, and the gap between them is reported.
+# See docs/DATA_ANALYSIS.md §4.2.
+# ---------------------------------------------------------------------------
+
+
+def _evaluate(tiny_textcnn, **kwargs):
+    return evaluate_all(
+        outputs=["밥 먹었나"],
+        dialect_refs=["밥 먹었나"],
+        standard_refs=["밥 먹었니"],
+        dialect_eojeol_maps=[[]],
+        target_do="gangwondo",
+        classifier=tiny_textcnn,
+        cls_tokenizer=_FakeTokenizer(),
+        embed_fn=None,
+        **kwargs,
+    )
+
+
+def test_recon_keys_absent_when_no_reverse_pass(tiny_textcnn):
+    result = _evaluate(tiny_textcnn)
+    assert "reconstruction_bleu" not in result
+    assert "reconstruction_bleu_chatml" not in result
+    assert "format_sensitivity" not in result
+
+
+def test_plain_only_reverse_pass_stays_backward_compatible(tiny_textcnn):
+    """A caller that has not adopted the chatml pass must keep working unchanged."""
+    result = _evaluate(tiny_textcnn, reverse_outputs=["밥 먹었니"])
+    assert result["reconstruction_bleu"] > 0
+    assert "reconstruction_bleu_chatml" not in result
+    assert "format_sensitivity" not in result
+
+
+def test_format_sensitivity_is_the_gain_from_the_training_format(tiny_textcnn):
+    # chatml reconstruction is exact, plain is not → positive sensitivity.
+    result = _evaluate(
+        tiny_textcnn,
+        reverse_outputs=["전혀 다른 문장"],
+        reverse_outputs_chatml=["밥 먹었니"],
+    )
+    assert result["reconstruction_bleu_chatml"] > result["reconstruction_bleu"]
+    assert result["format_sensitivity"] == pytest.approx(
+        result["reconstruction_bleu_chatml"] - result["reconstruction_bleu"]
+    )
+    assert result["format_sensitivity"] > 0
+
+
+def test_format_sensitivity_is_zero_when_prompt_format_does_not_matter(tiny_textcnn):
+    same = ["밥 먹었니"]
+    result = _evaluate(tiny_textcnn, reverse_outputs=same, reverse_outputs_chatml=list(same))
+    assert result["format_sensitivity"] == pytest.approx(0.0)

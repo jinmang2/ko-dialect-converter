@@ -261,6 +261,7 @@ def evaluate_all(
     embed_fn: Callable[[list[str]], torch.Tensor] | None = None,
     *,
     reverse_outputs: list[str] | None = None,
+    reverse_outputs_chatml: list[str] | None = None,
 ) -> dict[str, float]:
     """Compute TDR, DFS (if embed_fn provided), eojeol accuracy, chrF, BLEU.
 
@@ -271,7 +272,13 @@ def evaluate_all(
       content-preservation axis (A3; Mind the Style Gap arXiv:2502.15022).
     - ``reconstruction_bleu``: BLEU of dialect→standard reverse generation vs
       original source — proxy-independent selection signal (A4; Luo et al. 2019).
-      Only computed when ``reverse_outputs`` is supplied.
+      Only computed when ``reverse_outputs`` is supplied. This is the *plain-prompt*
+      variant, kept so historical numbers stay comparable.
+    - ``reconstruction_bleu_chatml``: the same score with the reverse pass prompted in
+      the training format (``template.py`` SSOT: ChatML + system prompt + region). This
+      is the ranking metric — see ``docs/DATA_ANALYSIS.md`` §4.2.
+    - ``format_sensitivity``: chatml − plain. BLEU the model gains from its training
+      format; 0 means prompt-format-robust, so LOWER is better.
     - ``jscore``: geometric mean of (0,1]-remapped {tdr, copy_margin, eojeol,
       fluency=0.5 placeholder}.  MONITORING ONLY — not a selection objective.
 
@@ -291,6 +298,17 @@ def evaluate_all(
 
     if reverse_outputs is not None:
         results["reconstruction_bleu"] = reconstruction_bleu(reverse_outputs, standard_refs)
+    if reverse_outputs_chatml is not None:
+        results["reconstruction_bleu_chatml"] = reconstruction_bleu(
+            reverse_outputs_chatml, standard_refs
+        )
+        if reverse_outputs is not None:
+            # How much BLEU the model gains from being asked in the format it was actually
+            # trained on. 0 = format-robust; a large value means the plain-prompt number is
+            # measuring out-of-format generalisation as much as dialect transfer.
+            results["format_sensitivity"] = (
+                results["reconstruction_bleu_chatml"] - results["reconstruction_bleu"]
+            )
 
     # J-score: MONITORING ONLY (plan §3 A4 — not selection objective)
     results["jscore"] = compute_jscore(

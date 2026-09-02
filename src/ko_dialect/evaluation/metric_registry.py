@@ -38,6 +38,21 @@ _SPECS: tuple[MetricSpec, ...] = (
         "proxy-independent — the ranking metric (Dual-RL / Luo 2019)",
     ),
     MetricSpec(
+        "reconstruction_bleu_chatml",
+        True,
+        "selection",
+        "reconstruction BLEU with the reverse pass prompted in the training format",
+        "the ranking metric — plain-prompt recon measures off-format generalisation too "
+        "(docs/DATA_ANALYSIS.md §4.2)",
+    ),
+    MetricSpec(
+        "format_sensitivity",
+        False,
+        "monitoring",
+        "reconstruction_bleu_chatml − reconstruction_bleu: BLEU gained from the training format",
+        "LOWER is better; 0 = robust to prompt format. Diagnostic, never a selection target",
+    ),
+    MetricSpec(
         "copy_margin",
         True,
         "dialectness",

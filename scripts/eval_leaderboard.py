@@ -36,6 +36,7 @@ from transformers import AutoTokenizer
 from ko_dialect.evaluation import grpo_runs
 from ko_dialect.evaluation.generation import generate_batched
 from ko_dialect.evaluation.leaderboard import (
+    DEFAULT_SELECT_BY,
     DIALECTNESS_AXIS,
     FIDELITY_AXIS,
     LEADERBOARD_METRICS,
@@ -50,6 +51,7 @@ from ko_dialect.evaluation.leaderboard import (
 )
 from ko_dialect.evaluation.metric_registry import glossary_markdown
 from ko_dialect.evaluation.metrics import DO_TO_LABEL
+from ko_dialect.evaluation.sampling import difficulty_bucket, stratified_indices
 from ko_dialect.evaluation.significance import PairedResult, paired_bootstrap, significance_marker
 from ko_dialect.models import TextCNNForSequenceClassification
 
@@ -101,13 +103,24 @@ def _resolve_regions(target_do: str, all_regions: bool, ds) -> list[str]:
     return wanted
 
 
-def _region_slice(ds_valid, target_do: str, n: int):
+def _region_slice(ds_valid, target_do: str, n: int, strategy: str = "head"):
+    """The eval slice for one region under one selection strategy.
+
+    ``head`` is the historical first-n slice every published number was measured on;
+    ``stratified`` matches the population's difficulty mix instead (both deterministic —
+    see ko_dialect.evaluation.sampling and docs/DATA_ANALYSIS.md §4.1).
+    """
     ds = ds_valid.filter(
         lambda x: (
             x["do"] == target_do and x["direction"] == "std2dia" and x["standard"] != x["dialect"]
         )
     )
-    ds = ds.select(range(grpo_runs.clamp_select_count(len(ds), n)))
+    take = grpo_runs.clamp_select_count(len(ds), n)
+    if strategy == "stratified":
+        buckets = [difficulty_bucket(d, st) for d, st in zip(ds["dialect"], ds["standard"])]
+        ds = ds.select(stratified_indices(buckets, take))
+    else:
+        ds = ds.select(range(take))
     return (
         list(ds["prompt"]),
         list(ds["dialect"]),
@@ -147,11 +160,70 @@ def _print_scope(title: str, ranked, frontier, significance, baseline_tag, selec
             print(f"  {tag:12s} Δ={s['delta']:+.2f}  p={s['p_value']:.3f}  {marker} ({verdict})")
 
 
+def _print_strategy_gap(scopes: dict[str, dict], strategies: list[str], select_by: str) -> None:
+    """Put the selection strategies side by side on the ranking metric.
+
+    The Δ column is the eval-set bias in the unit that matters — points of the metric a
+    model is actually ranked on. A large Δ means the historical ``head`` number was
+    flattered by an unrepresentative slice (docs/DATA_ANALYSIS.md §4.1), and a Δ that
+    differs across runs means the bias was not even a constant offset, so it could have
+    changed the ranking rather than just the level.
+    """
+    print("\n" + "=" * 88)
+    print(f"EVAL-SET SELECTION GAP — {select_by} by strategy")
+    print("=" * 88)
+
+    regions = sorted({r for sc in scopes.values() for r in sc["per_region_rows"]})
+    scopes_by_region: list[tuple[str, dict[str, dict[str, float]]]] = []
+    for region in [*regions, "OVERALL"]:
+        per_strategy: dict[str, dict[str, float]] = {}
+        for st in strategies:
+            if region == "OVERALL":
+                payload = scopes[st]["overall"]
+                rows = payload["rows"] if payload else None
+            else:
+                rows = scopes[st]["per_region_rows"].get(region)
+            if not rows:
+                continue
+            per_strategy[st] = {
+                tag: float(metrics.get(select_by, float("nan")))
+                for tag, metrics in (rows if not isinstance(rows, dict) else rows.items())
+            }
+        if per_strategy:
+            scopes_by_region.append((region, per_strategy))
+
+    for region, per_strategy in scopes_by_region:
+        present = [st for st in strategies if st in per_strategy]
+        if not present:
+            continue
+        head = f"{'run':<14}" + "".join(f"{st:>14}" for st in present)
+        if len(present) >= 2:
+            head += f"{'Δ':>10}"
+        print(f"\n[{region}]")
+        print(head)
+        print("-" * len(head))
+        tags = list(per_strategy[present[0]])
+        for tag in tags:
+            line = f"{tag:<14}"
+            for st in present:
+                line += f"{per_strategy[st].get(tag, float('nan')):>14.2f}"
+            if len(present) >= 2:
+                a = per_strategy[present[0]].get(tag, float("nan"))
+                b = per_strategy[present[-1]].get(tag, float("nan"))
+                line += f"{b - a:>+10.2f}"
+            print(line)
+    print(
+        "\nΔ = last strategy − first. Non-constant Δ across runs means the slice choice "
+        "could reorder the leaderboard, not just shift it."
+    )
+
+
 def main(
     target_do: str = "gangwondo",
     all_regions: bool = False,
     n: int = 150,
-    select_by: str = "reconstruction_bleu",
+    select_by: str = DEFAULT_SELECT_BY,
+    eval_strategies: str = "head,stratified",
     runs: str | None = None,
     include_sft: bool = True,
     base: str = BASE,
@@ -172,6 +244,10 @@ def main(
     specs = _resolve_specs(runs, base, include_sft)
     if not specs:
         raise SystemExit("No runs to evaluate (no outputs/grpo* adapters found).")
+    strategies = [t.strip() for t in eval_strategies.split(",") if t.strip()]
+    unknown = [t for t in strategies if t not in ("head", "stratified")]
+    if unknown or not strategies:
+        raise SystemExit(f"eval_strategies must be head and/or stratified, got {eval_strategies!r}")
     baseline_tag = next((s.tag for s in specs if s.adapter is None), "SFT")
 
     ds_valid = load_from_disk(dataset_path)["valid"]
@@ -219,96 +295,120 @@ def main(
 
     sent_bleu = BLEU(effective_order=True)
 
-    per_region_rows: dict[str, list[tuple[str, dict]]] = {}
-    per_region_payload: dict[str, dict] = {}
-    region_weights: dict[str, float] = {}
-    pooled_recon: dict[str, list[float]] = {tag: [] for tag in (s.tag for s in specs)}
+    def _evaluate_scope(strategy: str) -> dict:
+        """Evaluate every run in every region under one eval-set selection strategy.
 
-    for region in regions:
-        prompts, gold, src, emaps = _region_slice(ds_valid, region, n)
-        if not prompts:
-            logger.warning("No std2dia samples for %s; skipping.", region)
-            continue
-        region_weights[region] = float(len(prompts))
-        logger.info("=== region %s: %d samples ===", region, len(prompts))
+        Both strategies are reported side by side (docs/DATA_ANALYSIS.md §4.1 / D1): the
+        historical ``head`` slice keeps published numbers comparable, ``stratified`` says
+        what the score is once the slice matches the population's difficulty mix. The gap
+        between them is the bias, quantified per run.
+        """
+        per_region_rows: dict[str, list[tuple[str, dict]]] = {}
+        per_region_payload: dict[str, dict] = {}
+        region_weights: dict[str, float] = {}
+        pooled_recon: dict[str, list[float]] = {tag: [] for tag in (s.tag for s in specs)}
 
-        rows: list[tuple[str, dict]] = []
-        recon_scores: dict[str, list[float]] = {}
-        for spec in specs:
-            logger.info("  [%s] %s", region, spec.tag)
-            metrics, _outs, rev = evaluate_run(
-                spec,
-                prompts=prompts,
-                gold=gold,
-                src=src,
-                emaps=emaps,
+        for region in regions:
+            prompts, gold, src, emaps = _region_slice(ds_valid, region, n, strategy)
+            if not prompts:
+                logger.warning("No std2dia samples for %s; skipping.", region)
+                continue
+            region_weights[region] = float(len(prompts))
+            logger.info("=== region %s [%s]: %d samples ===", region, strategy, len(prompts))
+
+            rows: list[tuple[str, dict]] = []
+            recon_scores: dict[str, list[float]] = {}
+            for spec in specs:
+                logger.info("  [%s] %s", region, spec.tag)
+                metrics, _outs, _rev_plain, rev_chatml = evaluate_run(
+                    spec,
+                    prompts=prompts,
+                    gold=gold,
+                    src=src,
+                    emaps=emaps,
+                    target_do=region,
+                    classifier=classifier,
+                    cls_tokenizer=cls_tok,
+                    model_tokenizer=model_tok,
+                    generate_fn=generate_fn,
+                )
+                rows.append((spec.tag, metrics))
+                # Significance runs on the ranking basis: the training-format reverse pass.
+                scores = [sent_bleu.sentence_score(r, [s]).score for r, s in zip(rev_chatml, src)]
+                recon_scores[spec.tag] = scores
+                pooled_recon[spec.tag].extend(scores)
+
+            ranked = rank_rows(rows, select_by)
+            frontier = pareto_frontier(ranked)
+            significance = _significance_block(recon_scores, baseline_tag)
+            payload = build_leaderboard_payload(
+                ranked,
+                select_by=select_by,
                 target_do=region,
-                classifier=classifier,
-                cls_tokenizer=cls_tok,
-                model_tokenizer=model_tok,
-                generate_fn=generate_fn,
+                n_samples=len(prompts),
+                baseline_tag=baseline_tag,
             )
-            rows.append((spec.tag, metrics))
-            scores = [sent_bleu.sentence_score(r, [s]).score for r, s in zip(rev, src)]
-            recon_scores[spec.tag] = scores
-            pooled_recon[spec.tag].extend(scores)
+            payload["significance_vs_baseline"] = significance
+            per_region_rows[region] = ranked
+            per_region_payload[region] = payload
+            if track:
+                from ko_dialect.monitoring import log_panels, metrics_panel
 
-        ranked = rank_rows(rows, select_by)
-        frontier = pareto_frontier(ranked)
-        significance = _significance_block(recon_scores, baseline_tag)
-        payload = build_leaderboard_payload(
-            ranked,
-            select_by=select_by,
-            target_do=region,
-            n_samples=len(prompts),
-            baseline_tag=baseline_tag,
-        )
-        payload["significance_vs_baseline"] = significance
-        per_region_rows[region] = ranked
-        per_region_payload[region] = payload
-        if track:
-            from ko_dialect.monitoring import log_panels, metrics_panel
+                for tag, metrics in ranked:
+                    log_panels(metrics_panel(metrics, f"eval/{region}/{tag}"))
+            _print_scope(
+                f"LEADERBOARD — {region} std2dia [{strategy}], n={len(prompts)}, by {select_by}↑",
+                ranked,
+                frontier,
+                significance,
+                baseline_tag,
+                select_by,
+            )
 
-            for tag, metrics in ranked:
-                log_panels(metrics_panel(metrics, f"eval/{region}/{tag}"))
-        _print_scope(
-            f"LEADERBOARD — {region} std2dia, n={len(prompts)}, by {select_by}↑",
-            ranked,
-            frontier,
-            significance,
-            baseline_tag,
-            select_by,
-        )
+        if not per_region_rows:
+            raise SystemExit(f"No region produced samples for strategy {strategy!r}.")
 
-    if not per_region_rows:
-        raise SystemExit("No region produced samples; nothing to rank.")
+        # ---- OVERALL aggregate (only meaningful with ≥2 regions) ----
+        overall_payload = None
+        if len(per_region_rows) >= 2:
+            agg = aggregate_rows(per_region_rows, weights=region_weights)
+            agg_ranked = rank_rows(agg, select_by)
+            agg_frontier = pareto_frontier(agg_ranked)
+            agg_sig = _significance_block(pooled_recon, baseline_tag)
+            overall_payload = build_leaderboard_payload(
+                agg_ranked,
+                select_by=select_by,
+                target_do="OVERALL",
+                n_samples=int(sum(region_weights.values())),
+                baseline_tag=baseline_tag,
+            )
+            overall_payload["significance_vs_baseline"] = agg_sig
+            overall_payload["regions"] = list(per_region_rows)
+            overall_payload["region_weights"] = region_weights
+            _print_scope(
+                f"LEADERBOARD — OVERALL [{strategy}] (sample-weighted over {', '.join(per_region_rows)})",
+                agg_ranked,
+                agg_frontier,
+                agg_sig,
+                baseline_tag,
+                select_by,
+            )
 
-    # ---- OVERALL aggregate (only meaningful with ≥2 regions) ----
-    overall_payload = None
-    if len(per_region_rows) >= 2:
-        agg = aggregate_rows(per_region_rows, weights=region_weights)
-        agg_ranked = rank_rows(agg, select_by)
-        agg_frontier = pareto_frontier(agg_ranked)
-        agg_sig = _significance_block(pooled_recon, baseline_tag)
-        overall_payload = build_leaderboard_payload(
-            agg_ranked,
-            select_by=select_by,
-            target_do="OVERALL",
-            n_samples=int(sum(region_weights.values())),
-            baseline_tag=baseline_tag,
-        )
-        overall_payload["significance_vs_baseline"] = agg_sig
-        overall_payload["regions"] = list(per_region_rows)
-        overall_payload["region_weights"] = region_weights
-        _print_scope(
-            f"LEADERBOARD — OVERALL (sample-weighted over {', '.join(per_region_rows)})",
-            agg_ranked,
-            agg_frontier,
-            agg_sig,
-            baseline_tag,
-            select_by,
-        )
+        return {
+            "per_region_rows": per_region_rows,
+            "per_region_payload": per_region_payload,
+            "region_weights": region_weights,
+            "overall": overall_payload,
+        }
 
+    scopes = {st: _evaluate_scope(st) for st in strategies}
+    primary = scopes[strategies[0]]
+    per_region_rows = primary["per_region_rows"]
+    per_region_payload = primary["per_region_payload"]
+    overall_payload = primary["overall"]
+
+    if len(strategies) >= 2:
+        _print_strategy_gap(scopes, strategies, select_by)
     print("\n" + glossary_markdown(LEADERBOARD_METRICS))
     print(
         "\nNOTE: selection metric is proxy-independent; tdr/dfs/jscore are monitoring-only.\n"
@@ -328,11 +428,17 @@ def main(
     ts = time.strftime("%Y%m%d_%H%M%S")
     scope = "overall" if overall_payload else regions[0]
     record = {
-        "schema": "ko_dialect.leaderboard_multi/v1",
+        "schema": "ko_dialect.leaderboard_multi/v2",
         "select_by": select_by,
+        "eval_strategies": strategies,
         "regions": list(per_region_rows),
+        # Primary (= first strategy) kept at the top level so v1 readers keep working.
         "per_region": per_region_payload,
         "overall": overall_payload,
+        "by_strategy": {
+            st: {"per_region": sc["per_region_payload"], "overall": sc["overall"]}
+            for st, sc in scopes.items()
+        },
         "glossary_markdown": glossary_markdown(LEADERBOARD_METRICS),
     }
     json_path = out_root / f"leaderboard_{scope}_{ts}.json"
