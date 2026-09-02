@@ -45,6 +45,23 @@ _SPECS: tuple[MetricSpec, ...] = (
         "HIGHER is better; negative = output copies the standard input (Mind the Style Gap 2502.15022)",
     ),
     MetricSpec(
+        "gain_over_copy",
+        True,
+        "selection",
+        "chrF(gen,gold) − chrF(source,gold): value added over emitting the input unchanged",
+        "NEGATIVE = worse than doing nothing. The only surface axis comparable ACROSS "
+        "regions, since each region's copy floor differs (56.7 Gyeongsang … 79.9 "
+        "Chungcheong … 18.9 Jeju)",
+    ),
+    MetricSpec(
+        "copy_baseline",
+        False,
+        "surface",
+        "chrF(source,gold): what copying the input already scores — a property of the "
+        "region, not the model",
+        "not a score to maximise; the floor that makes raw chrF comparable",
+    ),
+    MetricSpec(
         "tdr",
         True,
         "dialectness",

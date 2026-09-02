@@ -154,6 +154,42 @@ def compute_chrf_source(outputs: list[str], source_refs: list[str]) -> float:
     return CHRF().corpus_score(outputs, [source_refs]).score
 
 
+def compute_copy_baseline(source_refs: list[str], gold_refs: list[str]) -> float:
+    """chrF the do-nothing model scores: emit the input unchanged.
+
+    A property of the *region*, not of any model. Measured dia2std on held-out data it
+    is 56.7 for Gyeongsang, 76.8 Gangwon, 79.9 Chungcheong, 18.9 Jeju — which is why raw
+    chrF cannot be compared across regions (docs/CORPUS_ANALYSIS_5REGION.md §6).
+    """
+    if not source_refs:
+        return 0.0
+    return compute_chrf(source_refs, gold_refs)
+
+
+def compute_gain_over_copy(
+    outputs: list[str], source_refs: list[str], gold_refs: list[str]
+) -> float:
+    """chrF(gen, gold) − chrF(source, gold): value added over emitting the input.
+
+    Negative means the model is worse than doing nothing. Distinct from
+    :func:`compute_copy_margin`, which penalises a generation for *resembling* the
+    source; this compares against the region's floor instead. Lives here rather than
+    being inlined by each caller so the definition cannot drift between the leaderboard
+    and ``scripts/eval_dia2std.py``.
+
+    The *principle* — score relative to the unchanged input, negative meaning the system
+    made things worse — is the one behind the I-measure (Felice & Briscoe, NAACL 2015,
+    "Towards a standard evaluation method for grammatical error detection and
+    correction"), which exists because F-score cannot tell a do-nothing system from one
+    that only makes wrong corrections. This is **not** an implementation of that metric:
+    the I-measure is a token-level three-way alignment, this is a corpus-chrF difference.
+    See docs/REFERENCES.md A13.
+    """
+    if not outputs:
+        return 0.0
+    return compute_chrf(outputs, gold_refs) - compute_copy_baseline(source_refs, gold_refs)
+
+
 def compute_copy_margin(outputs: list[str], gold_refs: list[str], source_refs: list[str]) -> float:
     """copy_margin = chrF(gen, gold) − chrF(gen, source).
 
@@ -269,6 +305,18 @@ def evaluate_all(
     - ``copy_margin``: chrF(gen, gold) − chrF(gen, source).  Strips copy-bias
       for dialects where gold ≈ source (Gangwon).  Replaces raw chrF as the
       content-preservation axis (A3; Mind the Style Gap arXiv:2502.15022).
+    - ``copy_baseline``: chrF(source, gold) — what emitting the input unchanged
+      already scores.  It is a property of the *region*, not of the model, and it
+      varies enormously: measured dia2std on held-out data it is 56.7 for Gyeongsang
+      but 79.9 for Chungcheong and 18.9 for Jeju.  Without it a raw chrF of 76.9
+      (Gangwon) reads as better than 83.9 is good, when in fact the first is a
+      +0.07 gain over doing nothing and the second is +27.
+    - ``gain_over_copy``: chrF(gen, gold) − copy_baseline.  Value added over the
+      do-nothing model; **negative means the model is worse than emitting its input**.
+      This is the axis to compare *across regions* — raw chrF is not comparable
+      because each region has a different floor.  Distinct from copy_margin, which
+      is a per-generation penalty for resembling the source rather than a
+      per-region floor (docs/CORPUS_ANALYSIS_5REGION.md §6).
     - ``reconstruction_bleu``: BLEU of dialect→standard reverse generation vs
       original source — proxy-independent selection signal (A4; Luo et al. 2019).
       Only computed when ``reverse_outputs`` is supplied.
@@ -288,6 +336,11 @@ def evaluate_all(
     # --- extended metrics ---
     results["chrf_source"] = compute_chrf_source(outputs, standard_refs)
     results["copy_margin"] = results["chrf"] - results["chrf_source"]
+    # This function assumes std2dia throughout (gold = dialect, source = standard), like
+    # the rest of the leaderboard. scripts/eval_dia2std.py passes the pair the other way
+    # round for the deployed direction — hence the explicit (source, gold) argument order.
+    results["copy_baseline"] = compute_copy_baseline(standard_refs, dialect_refs)
+    results["gain_over_copy"] = compute_gain_over_copy(outputs, standard_refs, dialect_refs)
 
     if reverse_outputs is not None:
         results["reconstruction_bleu"] = reconstruction_bleu(reverse_outputs, standard_refs)
