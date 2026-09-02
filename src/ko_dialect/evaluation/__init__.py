@@ -28,6 +28,12 @@ from .metric_registry import (
     is_higher_better,
 )
 from .metrics import compute_dfs, compute_eojeol_accuracy, compute_tdr, evaluate_all
+from .sampling import (
+    bucket_shares,
+    changed_eojeol_count,
+    edit_bucket,
+    stratified_indices,
+)
 from .significance import bootstrap_ci, paired_bootstrap, significance_marker
 
 __all__ = [
@@ -52,6 +58,10 @@ __all__ = [
     "harmonic_joint",
     "joint_score",
     "aggregate_rows",
+    "bucket_shares",
+    "changed_eojeol_count",
+    "edit_bucket",
+    "stratified_indices",
     "bootstrap_ci",
     "paired_bootstrap",
     "significance_marker",
