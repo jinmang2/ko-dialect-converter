@@ -77,6 +77,24 @@ uv run python scripts/merge_sft_lora.py --adapter_path outputs/grpo_arm1 \
 uv run python scripts/bench_serving.py --model_path outputs/grpo_arm1_merged --target_do gangwondo
 ```
 
+### Corpus + eval-validity facts (measured — `docs/DATA_ANALYSIS.md`)
+Regenerate with `uv run python scripts/analyze_data.py all`. Load-bearing findings:
+- **Data covers 2 of the 5 labelled regions.** `labels.py` reserves ids for jeollado /
+  jejudo / chungcheongdo, but `raw_data/` holds only 139-1 (강원도·경상도). Also note
+  `prepare_data.py` defaults to `raw_data/new_dialect`, which does not exist on disk.
+- **~42% of rows are `is_identical`** (dialect text == standard text) and every path drops
+  them. `speech_kind` almost fully explains which: `read` 4.5% identical vs `say` 62.9%.
+- **Transfer is small and length-preserving** — usable pairs change 25–33% of eojeol, and
+  24–29% differ by a single eojeol. This is the data-side case for `copy_margin`.
+- **first-n eval selection skews easy, by a different amount per region** (TVD 46.9%
+  gangwon vs 15.2% gyeongsang). `load_eval_samples(..., strategy="stratified")` fixes it
+  deterministically (TVD → 0.2%); the default stays `head` pending a re-run decision.
+- **`reconstruction_bleu` (the ranking metric) is measured off-template** — `REVERSE_PROMPT`
+  is plain text with no ChatML, system prompt, or region, unlike everything the model saw
+  in training. Open decision, see DATA_ANALYSIS.md §5.
+- `speech_kind` / `intent` / `emotion` are populated and read by nothing;
+  `dialect_eojeol_map` is 43.2% empty, so `eojeol_accuracy` covers ~57% of rows.
+
 ### Evaluation references (grounding for the leaderboard)
 - **DIA-REFINE** (arXiv:2511.06680) — TDR + DFS metrics; n-gram metrics reward source-copying → motivates copy_margin.
 - **MO-GRPO** (Ichihara et al., arXiv:2509.22047) — per-objective z-norm-then-sum aggregation (prevents one reward axis dominating). The "select on proxy-independent signals only" rule is *our* inference from its reward-hacking analysis, not an explicit paper recommendation (see docs/REFERENCES.md A2).
