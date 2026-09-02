@@ -39,12 +39,15 @@ import torch
 from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from ko_dialect.data.labels import dialect_region
 from ko_dialect.evaluation import (
     TOKENIZER_MAX_LENGTH,
     evaluate_all,
     generate_batched,
     grpo_runs,
 )
+from ko_dialect.evaluation.leaderboard import build_dia2std_prompt
+from ko_dialect.evaluation.sampling import char_edit_bucket
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -55,48 +58,6 @@ CLS = "outputs/classifier_clean"
 CLS_TOK = CLS
 
 # Edit-distance thresholds for small / med / large buckets (character-level Levenshtein).
-BUCKET_SMALL = 3
-BUCKET_MED = 8
-
-
-def _lev_distance(a: str, b: str) -> int:
-    """Simple character-level Levenshtein distance."""
-    if a == b:
-        return 0
-    la, lb = len(a), len(b)
-    if la == 0:
-        return lb
-    if lb == 0:
-        return la
-    prev = list(range(lb + 1))
-    for i, ca in enumerate(a, 1):
-        curr = [i] + [0] * lb
-        for j, cb in enumerate(b, 1):
-            curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb))
-        prev = curr
-    return prev[lb]
-
-
-def _edit_bucket(standard: str, dialect: str) -> str:
-    d = _lev_distance(standard, dialect)
-    if d <= BUCKET_SMALL:
-        return "small"
-    if d <= BUCKET_MED:
-        return "med"
-    return "large"
-
-
-def _dialect_region(do: str) -> str:
-    if "gangwon" in do.lower():
-        return "gangwon"
-    if "gyeongsang" in do.lower():
-        return "gyeongsang"
-    return "other"
-
-
-def _build_dia2std_prompt(dialect_text: str) -> str:
-    """Reverse prompt: dialect → standard Korean (for reconstruction-BLEU pass)."""
-    return f"다음 방언 문장을 표준어로 바꿔줘.\n방언: {dialect_text}\n표준어: "
 
 
 def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
@@ -139,7 +100,7 @@ def eval_one(
 
     # Reverse pass: model's output dialect → standard (reconstruction-BLEU)
     # Dual-RL / Luo et al. 2019: cycle back through the model with a reversed prompt.
-    rev_prompts = [_build_dia2std_prompt(o) for o in outs]
+    rev_prompts = [build_dia2std_prompt(o) for o in outs]
     rev_outs = generate(model, model_tok, rev_prompts, device)
 
     res = evaluate_all(
@@ -223,7 +184,7 @@ def main(
 
     # Build stratified bucket labels: edit-distance bucket × dialect region
     bucket_keys = [
-        f"{_dialect_region(row['do'])}_{_edit_bucket(row['standard'], row['dialect'])}"
+        f"{dialect_region(row['do'])}_{char_edit_bucket(row['standard'], row['dialect'])}"
         for row in ds
     ]
 

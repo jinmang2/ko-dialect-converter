@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .checkpoints import resolve_best_checkpoint
+from .sampling import difficulty_bucket, stratified_indices
 
 logger = logging.getLogger(__name__)
 
@@ -38,24 +39,46 @@ def load_eval_samples(
     split: str,
     target_do: str,
     direction: str,
-    n: int,
-) -> list[dict]:
-    """Load held-out ``(source, reference)`` rows for one region/direction.
+    n: int | None = None,
+    strategy: str = "head",
+) -> list[dict[str, str]]:
+    """Load the fixed ``(source, reference)`` eval pairs for one region.
 
-    Filters to ``target_do`` non-identical pairs, optionally takes the first ``n``, and
-    maps each pair to ``{"source", "reference"}`` per ``direction`` (``std2dia`` translates
-    standard -> dialect; anything else dialect -> standard).
+    Rows where dialect == standard (``is_identical``) carry no transfer signal, so they are
+    dropped before selection. Both strategies are deterministic — never a shuffle — so the
+    same arguments always yield the same set, which is what lets the on-device harness
+    fingerprint it (``ondevice/eval/make_eval_prompts.py``) and compare a phone score
+    against a desktop score.
+
+    ``strategy`` chooses how ``n`` rows are taken:
+
+    - ``"head"`` (default) — a plain first-n slice, matching every existing eval path, so
+      previously published numbers stay reproducible.
+    - ``"stratified"`` — match the population's difficulty mix instead. The first-n slice
+      over-samples near-copy pairs badly and by a different factor per region (see
+      ``sampling.py`` for the measured numbers), which biases scores upward and makes
+      per-region results not comparable with each other. Prefer this for new evaluations.
+
+    ``direction`` picks which column is the input: ``std2dia`` translates standard → dialect,
+    anything else (``dia2std``) goes the other way.
     """
     from datasets import load_from_disk
+
+    if strategy not in ("head", "stratified"):
+        raise ValueError(f"strategy must be 'head' or 'stratified', got {strategy!r}")
 
     ds = load_from_disk(raw_dataset_path)[split]
     ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
     if n and n < len(ds):
-        ds = ds.select(range(n))
+        if strategy == "stratified":
+            buckets = [difficulty_bucket(d, s) for d, s in zip(ds["dialect"], ds["standard"])]
+            ds = ds.select(stratified_indices(buckets, n))
+        else:
+            ds = ds.select(range(n))
     rows = []
-    for s in ds:
-        source = s["standard"] if direction == "std2dia" else s["dialect"]
-        reference = s["dialect"] if direction == "std2dia" else s["standard"]
+    for sample in ds:
+        source = sample["standard"] if direction == "std2dia" else sample["dialect"]
+        reference = sample["dialect"] if direction == "std2dia" else sample["standard"]
         rows.append({"source": source, "reference": reference})
     return rows
 

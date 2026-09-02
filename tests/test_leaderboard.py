@@ -5,9 +5,12 @@ import json
 import pytest
 
 from ko_dialect.evaluation.leaderboard import (
+    DIALECTNESS_AXIS,
+    FIDELITY_AXIS,
     RunSpec,
     aggregate_rows,
     build_dia2std_prompt,
+    build_dia2std_prompt_chatml,
     build_leaderboard_payload,
     deltas_vs_baseline,
     discover_runs,
@@ -123,14 +126,56 @@ def test_build_dia2std_prompt_contains_text():
     assert "표준어" in p
 
 
+class _ChatTemplateTokenizer:
+    """Minimal stand-in that records the messages it was handed."""
+
+    def __init__(self):
+        self.seen: list[dict[str, str]] = []
+
+    def apply_chat_template(self, messages, tokenize=False, add_generation_prompt=False):
+        self.seen = messages
+        assert tokenize is False
+        body = "".join(f"<|im_start|>{m['role']}\n{m['content']}<|im_end|>\n" for m in messages)
+        return body + ("<|im_start|>assistant\n" if add_generation_prompt else "")
+
+
+def test_chatml_reverse_prompt_matches_the_training_format():
+    """The plain prompt drops everything training conditioned on; this one must not.
+
+    The plain REVERSE_PROMPT has no ChatML wrapper, no system prompt and no region, so a
+    score measured with it partly reflects out-of-format generalisation
+    (docs/DATA_ANALYSIS.md §4.2). This is the faithful builder.
+    """
+    tok = _ChatTemplateTokenizer()
+    prompt = build_dia2std_prompt_chatml(tok, "밥 뭇나?", "gyeongsangdo")
+
+    roles = [m["role"] for m in tok.seen]
+    assert roles == ["system", "user"]  # no assistant turn — it is a prompt
+    assert tok.seen[0]["content"] == "당신은 한국어 방언 변환 전문가입니다."
+    assert "경상도" in tok.seen[1]["content"]  # region injected, in Korean
+    assert "밥 뭇나?" in tok.seen[1]["content"]
+    assert prompt.endswith("<|im_start|>assistant\n")  # ready to generate
+
+
+def test_chatml_and_plain_reverse_prompts_actually_differ():
+    tok = _ChatTemplateTokenizer()
+    text = "밥 뭇나?"
+    plain = build_dia2std_prompt(text)
+    chatml = build_dia2std_prompt_chatml(tok, text, "gyeongsangdo")
+
+    assert plain != chatml
+    assert "<|im_start|>" not in plain  # the gap the format_sensitivity metric measures
+    assert "경상도" not in plain
+
+
 # --- Pareto frontier & joint score (multi-axis view) ---
 
 
 def test_pareto_frontier_keeps_nondominated_tradeoff():
     rows = [
-        ("SFT", {"copy_margin": -5.0, "reconstruction_bleu": 38.0}),  # max fidelity
-        ("arm2", {"copy_margin": -2.0, "reconstruction_bleu": 37.0}),  # max dialectness
-        ("dominated", {"copy_margin": -6.0, "reconstruction_bleu": 36.0}),  # worse on both
+        ("SFT", {DIALECTNESS_AXIS: -5.0, FIDELITY_AXIS: 38.0}),  # max fidelity
+        ("arm2", {DIALECTNESS_AXIS: -2.0, FIDELITY_AXIS: 37.0}),  # max dialectness
+        ("dominated", {DIALECTNESS_AXIS: -6.0, FIDELITY_AXIS: 36.0}),  # worse on both
     ]
     frontier = set(pareto_frontier(rows))
     assert frontier == {"SFT", "arm2"}
@@ -139,15 +184,15 @@ def test_pareto_frontier_keeps_nondominated_tradeoff():
 
 def test_pareto_frontier_single_dominator():
     rows = [
-        ("best", {"copy_margin": 5.0, "reconstruction_bleu": 40.0}),
-        ("a", {"copy_margin": 1.0, "reconstruction_bleu": 30.0}),
-        ("b", {"copy_margin": 4.0, "reconstruction_bleu": 39.0}),
+        ("best", {DIALECTNESS_AXIS: 5.0, FIDELITY_AXIS: 40.0}),
+        ("a", {DIALECTNESS_AXIS: 1.0, FIDELITY_AXIS: 30.0}),
+        ("b", {DIALECTNESS_AXIS: 4.0, FIDELITY_AXIS: 39.0}),
     ]
     assert pareto_frontier(rows) == ["best"]
 
 
 def test_pareto_frontier_handles_missing_axis():
-    rows = [("x", {"copy_margin": 1.0}), ("y", {"reconstruction_bleu": 1.0})]
+    rows = [("x", {DIALECTNESS_AXIS: 1.0}), ("y", {FIDELITY_AXIS: 1.0})]
     # neither dominates the other (each missing the other's axis -> -inf)
     assert set(pareto_frontier(rows)) == {"x", "y"}
 
@@ -162,24 +207,24 @@ def test_harmonic_joint_punishes_imbalance():
 
 
 def test_joint_score_in_unit_range():
-    m = {"copy_margin": 0.0, "reconstruction_bleu": 50.0}
+    m = {DIALECTNESS_AXIS: 0.0, FIDELITY_AXIS: 50.0}
     js = joint_score(m)
     assert 0.0 < js <= 1.0
 
 
 def test_payload_v2_has_pareto_and_joint():
     rows = [
-        ("SFT", {"reconstruction_bleu": 38.0, "copy_margin": -5.0}),
-        ("arm2", {"reconstruction_bleu": 37.0, "copy_margin": -2.0}),
+        ("SFT", {FIDELITY_AXIS: 38.0, DIALECTNESS_AXIS: -5.0}),
+        ("arm2", {FIDELITY_AXIS: 37.0, DIALECTNESS_AXIS: -2.0}),
     ]
-    ranked = rank_rows(rows, "reconstruction_bleu")
+    ranked = rank_rows(rows, FIDELITY_AXIS)
     payload = build_leaderboard_payload(
-        ranked, select_by="reconstruction_bleu", target_do="gangwondo", n_samples=150
+        ranked, select_by=FIDELITY_AXIS, target_do="gangwondo", n_samples=150
     )
     assert payload["schema"] == "ko_dialect.leaderboard/v2"
     assert set(payload["pareto_frontier"]) == {"SFT", "arm2"}
     assert "joint_score" in payload and set(payload["joint_score"]) == {"SFT", "arm2"}
-    assert json.loads(json.dumps(payload))["pareto_axes"] == ["copy_margin", "reconstruction_bleu"]
+    assert json.loads(json.dumps(payload))["pareto_axes"] == [DIALECTNESS_AXIS, FIDELITY_AXIS]
 
 
 def test_format_table_header_has_direction_arrows():

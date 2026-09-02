@@ -39,8 +39,11 @@ import torch
 from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from ko_dialect.data.labels import dialect_region
 from ko_dialect.evaluation import TOKENIZER_MAX_LENGTH, evaluate_all, generate_batched
 from ko_dialect.evaluation.grpo_runs import clamp_select_count
+from ko_dialect.evaluation.leaderboard import build_dia2std_prompt
+from ko_dialect.evaluation.sampling import char_edit_bucket, lev_distance
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -56,49 +59,6 @@ CLS = "outputs/classifier_clean"
 # dir ships the exact tokenizer the classifier was trained with, so this is both
 # network-free and more correct.
 CLS_TOK = CLS
-
-BUCKET_SMALL = 3
-BUCKET_MED = 8
-
-
-def _lev_distance(a: str, b: str) -> int:
-    """Character-level Levenshtein distance."""
-    if a == b:
-        return 0
-    la, lb = len(a), len(b)
-    if la == 0:
-        return lb
-    if lb == 0:
-        return la
-    prev = list(range(lb + 1))
-    for i, ca in enumerate(a, 1):
-        curr = [i] + [0] * lb
-        for j, cb in enumerate(b, 1):
-            curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb))
-        prev = curr
-    return prev[lb]
-
-
-def _edit_bucket(standard: str, dialect: str) -> str:
-    d = _lev_distance(standard, dialect)
-    if d <= BUCKET_SMALL:
-        return "small"
-    if d <= BUCKET_MED:
-        return "med"
-    return "large"
-
-
-def _dialect_region(do: str) -> str:
-    if "gangwon" in do.lower():
-        return "gangwon"
-    if "gyeongsang" in do.lower():
-        return "gyeongsang"
-    return "other"
-
-
-def _build_dia2std_prompt(dialect_text: str) -> str:
-    """Reverse prompt: dialect → standard Korean (for reconstruction-BLEU pass)."""
-    return f"다음 방언 문장을 표준어로 바꿔줘.\n방언: {dialect_text}\n표준어: "
 
 
 def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
@@ -189,7 +149,7 @@ def main(
 
     # Stratified bucket labels: dialect_region × edit_distance_bucket
     bucket_keys = [
-        f"{_dialect_region(row['do'])}_{_edit_bucket(row['standard'], row['dialect'])}"
+        f"{dialect_region(row['do'])}_{char_edit_bucket(row['standard'], row['dialect'])}"
         for row in ds
     ]
 
@@ -216,7 +176,7 @@ def main(
 
         # Reverse: model's dialect output → standard (reconstruction-BLEU)
         # Dual-RL / Luo et al. 2019: cycle consistency as content-preservation signal.
-        rev_prompts = [_build_dia2std_prompt(o) for o in outs]
+        rev_prompts = [build_dia2std_prompt(o) for o in outs]
         rev = generate(model, tok, rev_prompts, device, max_new_tokens=max_new_tokens)
         rev_outs[tag] = rev
 
@@ -320,7 +280,7 @@ def main(
         idxs = idx_by_bucket[bk]
         print(f"\n--- bucket: {bk}  (n={len(idxs)}) ---")
         for rank, i in enumerate(idxs[:n_show], 1):
-            ed = _lev_distance(src[i], gold[i])
+            ed = lev_distance(src[i], gold[i])
             print(f"\n  [{rank}/{min(n_show, len(idxs))}] edit_dist={ed}")
             print(f"  표준어 : {src[i]}")
             print(f"  SFT   : {gens['SFT'][i]}")

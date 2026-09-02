@@ -8,7 +8,7 @@ dedicated reproducibility pass.
 **Method:** static read + `py_compile` (all files clean) + cheap CPU checks (pure helpers
 exercised on toy data) + artifact cross-checks against `outputs/eval_logs/*.json`.
 **Not done:** no training, no GPU generation, no HF upload. LSP (`ty`) and `ruff` were not
-on the reviewers' PATH in-sandbox; the project runs in conda env `balaenoptera`.
+on the reviewers' PATH in-sandbox; the project runs in the uv-managed venv `.venv`.
 
 ## Bottom line
 
@@ -90,7 +90,7 @@ on the reviewers' PATH in-sandbox; the project runs in conda env `balaenoptera`.
 ## Reproducibility of recorded experiments
 
 All four experiments in `docs/EXPERIMENTS.md` / `docs/RESULTS.md`: scripts import cleanly under
-`balaenoptera`; all referenced model/adapter dirs exist with real weights
+`.venv`; all referenced model/adapter dirs exist with real weights
 (`outputs/{sft_merged,sft_control_s15,sft_prosody_s15,sft_prosody_v2,grpo_500,grpo_arm1,grpo_arm2,grpo_v2,classifier_clean}`);
 cited eval-log artifacts exist; spot-checked numbers match.
 

@@ -8,26 +8,21 @@ version = "0.2.0"
 description = "Korean dialect ↔ standard Korean via QLoRA / GRPO fine-tuning"
 requires-python = ">=3.11"
 dependencies = [
-    # Core ML stack.
-    # torch is PINNED and served from the CUDA-13 wheel index (see [tool.uv.sources]).
-    # 2.11.0+cu130 is the combination validated on this box: RTX 2060 / Turing SM 7.5,
-    # fp16-only. Do not float this — 2.13 resolves a different CUDA dep set, and the
-    # GRPO playbook's fixes are pinned to trl 1.5.1 + transformers 5.5.4 + torch 2.11.
-    "torch==2.11.0",
+    # Core ML stack
+    # torch/torchvision resolve from the cu130 index — see [tool.uv.sources] below.
+    "torch",
     "torchvision",
-    "transformers",
-    "datasets",
-    "accelerate",
-    "peft",
-    "trl",
+    "transformers>=5.10",
+    "datasets>=4.8",
+    "accelerate>=1.13",
+    "peft>=0.19",
+    "trl>=1.5",          # GRPO code targets the trl 1.x API
     "huggingface_hub",
-    "bitsandbytes",
+    "bitsandbytes>=0.49",
     "torchao",
 
-    # Fine-tuning notes (pinned dupes removed; see top block)
     # deepspeed: optional, install separately for ZeRO offload
-    # unsloth: install separately (CUDA-specific wheel)
-    # see: https://github.com/unslothai/unsloth#installation
+    # unsloth/xformers/vllm are CUDA-specific → extras below ("gpu", "vllm")
 
     # Evaluation
     "sacrebleu>=2.4.0",
@@ -53,7 +48,10 @@ dependencies = [
 dev = [
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
-    "ruff>=0.15.0",
+    # Pinned to CI's exact version (.github/workflows/ci.yml). A floor instead of a pin
+    # lets the local env drift ahead: ruff 0.16 reformats python blocks inside .md and
+    # differs on .py output, so a "locally clean" tree can still fail the CI gate.
+    "ruff==0.15.15",
     "mypy>=1.10.0",
     "pre-commit>=3.7.0",
     "types-PyYAML>=6.0.0",
@@ -61,13 +59,53 @@ dev = [
 # Opt-in extras kept out of core so CPU CI / minimal installs stay lean.
 track   = ["wandb>=0.18", "mlflow>=2.15.0"]   # logger=wandb | logger=mlflow
 datagen = ["openai>=1.50", "google-genai"]    # synthetic-data generation scripts
-serve   = ["open-webui", "ipywidgets"]         # serving UI / notebooks
+# NOTE: open-webui is a standalone server app, not a library this repo imports
+# (nothing under src/ or scripts/ references it), and its pins resolve only to
+# yanked mlflow releases — which makes [serve] + [track] jointly unsatisfiable.
+# Install it isolated instead:  uv tool install open-webui
+serve   = ["ipywidgets"]                           # notebook widgets only
 eval    = ["lm_eval>=0.4"]
-# NOTE: `vllm` is deliberately NOT an extra. `uv lock` resolves every extra, and the
-# PyPI sdist for this platform tries to compile against /usr/local/cuda/bin/nvcc, which
-# is absent here — that single extra made the whole lockfile unbuildable. vllm is
-# installed from git by `make install-vllm`, same as unsloth. Keep it out of the lock.
+gpu     = ["unsloth", "unsloth_zoo", "xformers"]   # CUDA-only fine-tuning kernels
+vllm    = ["vllm"]                                 # pinned by rev in [tool.uv.sources]
 speech  = ["faster-whisper>=1.0", "torchaudio", "soundfile"]   # src/ko_dialect/speech (ASR + audio F0)
+
+[tool.uv]
+# Keep the heavy CUDA extras out of a bare `uv sync`; opt in with --extra gpu / --extra vllm.
+default-groups = []
+
+# unsloth-zoo caps transformers at <=5.5.0, but this repo's training + evaluation code
+# runs on the transformers 5.10+ API. The previous pip/conda environment resolved this
+# by ignoring the cap outright (it shipped transformers 5.10.2 alongside unsloth-zoo
+# 2026.6.1, and GRPO ran fine there). uv refuses such a conflict unless it is declared,
+# so state it explicitly here rather than reintroducing a silently inconsistent env.
+# Revisit whenever unsloth-zoo widens its pin.
+override-dependencies = [
+    "transformers>=5.10",
+    "datasets>=4.8",
+    "trl>=1.5",
+    "peft>=0.19",
+    "accelerate>=1.13",
+]
+
+# torch 2.11 for CUDA 13.0 is not on PyPI — it only exists on PyTorch's own index.
+# "explicit" = ONLY the packages mapped in [tool.uv.sources] come from here, so the
+# rest of the tree still resolves against PyPI.
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+torchaudio = { index = "pytorch-cu130" }
+# Pinned to the exact commit the previous environment was built from
+# (docs/env_snapshot/balaenoptera-pip-freeze.txt).
+vllm = { git = "https://github.com/vllm-project/vllm.git", rev = "59d0236193a1cb5e88bee9cd4a3692a5587c9558" }
+# The PyPI unsloth build pins trl<1 / datasets<4, which silently downgrades the
+# training stack. Upstream git carries the 2026.x line the repo was built on.
+unsloth = { git = "https://github.com/unslothai/unsloth.git" }
+unsloth_zoo = { git = "https://github.com/unslothai/unsloth-zoo.git" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -75,11 +113,16 @@ where = ["src"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-exclude = [".git", "__pycache__", "*.egg-info"]
+# llama.cpp is a vendored upstream clone; its style is not ours to enforce and it
+# otherwise drowns `ruff check .` in ~1150 findings that CI never sees.
+exclude = [".git", "__pycache__", "*.egg-info", "llama.cpp", ".venv"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP"]
-ignore = ["E501", "F821"]
+# F821 (undefined name) stays ON: it is the only rule that catches an import removed
+# by `ruff --fix` while its use was still being written, which is a real break that
+# py_compile cannot see. The tree is clean under it.
+ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-local-folder = ["app", "src"]
@@ -98,23 +141,3 @@ addopts = "-v --tb=short"
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
-
-# --------------------------------------------------------------------------- #
-# uv project configuration
-# --------------------------------------------------------------------------- #
-# torch must come from PyTorch's CUDA-13 wheel index, not PyPI (PyPI's `torch` is the
-# CPU/cu12 build). `explicit = true` means this index is used ONLY for the packages
-# mapped to it below — everything else still resolves from PyPI.
-[[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cu130" }
-torchvision = { index = "pytorch-cu130" }
-
-[tool.uv]
-# unsloth ships a CUDA-specific wheel from git and is intentionally NOT a locked
-# dependency (`make install-unsloth`); keeping it out lets CPU-only CI resolve.
-default-groups = []

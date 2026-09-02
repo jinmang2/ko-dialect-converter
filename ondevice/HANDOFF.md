@@ -14,9 +14,11 @@ KoDialect `sft_merged` 0.5B → GGUF → **Galaxy S25 Ultra 실측**으로 BRIEF
 오프라인 테스트 `7 passed, 1 skipped`(=라이브 동치), ruff clean.
 
 ## 2. 재개 환경
-- 데스크탑 파이썬 env: **uv 관리 `./.venv`** (`$(pwd)/.venv/bin/python`). 구 conda env `balaenoptera`는 2026-08-04에 제거됨.
-  재생성: `uv venv --python 3.11 .venv && make install-torch && make install && make install-unsloth`.
+- 데스크탑 파이썬 env: **uv 관리 `.venv`** (`uv sync --extra dev --extra gpu` 로 생성, `uv run ...` 로 실행) — `datasets`/`sacrebleu`/`matplotlib`/`transformers`/`peft`/`fire` 보유.
 - 폰: Termux + llama.cpp(직접 빌드). llama.cpp 는 루트에 클론돼 있을 수 있음(`llama.cpp/`, gitignore).
+- **환경이 conda → uv 로 이관됨**: 옛 conda env `balaenoptera` 는 삭제. `uv.lock` 이 해석을
+  고정하므로 다른 PC에서도 `uv sync` 한 번으로 동일 환경이 재현된다. 옛 env 의 패키지
+  목록은 `docs/env_snapshot/balaenoptera-pip-freeze.txt` 에 참고용으로 남겨둠.
 - CI 게이트: `ruff check` + `ruff format --check` (커밋 전 `ruff format .` 필수).
 
 ## 3. 검증된 핵심 인터페이스 (재사용처)
@@ -53,7 +55,7 @@ KoDialect `sft_merged` 0.5B → GGUF → **Galaxy S25 Ultra 실측**으로 BRIEF
 ## 7. 재개 첫 명령
 ```bash
 git checkout feat/ondevice-galaxy
-PY=.venv/bin/python
-$PY -m pytest ondevice/tests/test_ondevice.py -q     # 7 passed, 1 skipped 확인
+uv sync --extra dev --extra gpu                       # .venv 재현
+uv run pytest ondevice/tests/test_ondevice.py -q     # 7 passed, 1 skipped 확인
 cat ondevice/README.md                                # 액션플랜
 ```

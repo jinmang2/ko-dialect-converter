@@ -28,7 +28,9 @@ logger = logging.getLogger(__name__)
 
 # Metrics shown in the leaderboard table, in column order. ``higher = better`` for all.
 LEADERBOARD_METRICS = (
+    "reconstruction_bleu_chatml",
     "reconstruction_bleu",
+    "format_sensitivity",
     "copy_margin",
     "tdr",
     "dfs",
@@ -38,8 +40,11 @@ LEADERBOARD_METRICS = (
     "jscore",
 )
 
-# Proxy-independent default — see module docstring / plan §3 A4.
-DEFAULT_SELECT_BY = "reconstruction_bleu"
+# Proxy-independent default — see module docstring / plan §3 A4. The chatml variant is the
+# ranking basis: the plain-prompt reverse pass asks the model in a format it never saw in
+# training, so part of that score is off-format generalisation rather than dialect transfer
+# (measured in docs/DATA_ANALYSIS.md §4.2). Both are reported.
+DEFAULT_SELECT_BY = "reconstruction_bleu_chatml"
 
 # The two orthogonal axes of dialect conversion. Style strength and content preservation
 # are in empirical tension in the text-style-transfer literature (Hu et al. 2022 survey,
@@ -48,7 +53,7 @@ DEFAULT_SELECT_BY = "reconstruction_bleu"
 # TST: Liu/Neubig/Wieting, arXiv:2010.12771). No single number wins, so we report the
 # Pareto frontier over them instead of forcing a rank. (See docs/REFERENCES.md A4/A5.)
 DIALECTNESS_AXIS = "copy_margin"  # copy-debiased conversion strength (gold vs source)
-FIDELITY_AXIS = "reconstruction_bleu"  # proxy-independent content preservation
+FIDELITY_AXIS = "reconstruction_bleu_chatml"  # proxy-independent content preservation
 
 
 @dataclass(frozen=True)
@@ -307,8 +312,27 @@ REVERSE_PROMPT = "다음 방언 문장을 표준어로 바꿔줘.\n방언: {dial
 
 
 def build_dia2std_prompt(dialect_text: str) -> str:
-    """Reverse prompt (dialect → standard) for the reconstruction-BLEU pass."""
+    """Plain-text reverse prompt (dialect → standard) for the reconstruction-BLEU pass.
+
+    Note this is NOT the format the model was trained on — no ChatML wrapper, no system
+    prompt, no region. Kept because every published reconstruction_bleu number was
+    measured with it; ``build_dia2std_prompt_chatml`` is the faithful one.
+    """
     return REVERSE_PROMPT.format(dialect=dialect_text)
+
+
+def build_dia2std_prompt_chatml(
+    tokenizer, dialect_text: str, target_do: str, template_name: str = "default"
+) -> str:
+    """Reverse prompt in the same format training used (``data/template.py`` SSOT).
+
+    Prompting an instruction-tuned model out-of-format costs quality, and the cost varies
+    per run in a way that has nothing to do with dialect transfer — which is why the
+    ranking metric is built on this prompt rather than the plain one (DATA_ANALYSIS §4.2).
+    """
+    from ..data.template import get_template
+
+    return get_template(template_name).build_prompt(tokenizer, dialect_text, target_do, "dia2std")
 
 
 def make_classifier_embed_fn(classifier, cls_tokenizer, device, *, max_length: int = 128):
@@ -349,14 +373,18 @@ def evaluate_run(
     model_tokenizer,
     generate_fn,
     with_dfs: bool = True,
-) -> tuple[dict[str, float], list[str], list[str]]:
+) -> tuple[dict[str, float], list[str], list[str], list[str]]:
     """Load ``spec``, generate forward + reverse, and score with ``evaluate_all``.
 
     ``generate_fn(model, tokenizer, prompts) -> list[str]`` is injected so the GPU
     path is swappable (and mockable in tests). When ``with_dfs`` the DIA-REFINE DFS axis
-    is computed from the classifier's penultimate embedding. Returns
-    ``(metrics, forward_outputs, reverse_outputs)`` so callers can run paired
-    significance on per-sentence scores.
+    is computed from the classifier's penultimate embedding.
+
+    The reverse pass runs twice — once with the plain prompt every published number used,
+    once in the training format — so the leaderboard can report both and the gap between
+    them (DATA_ANALYSIS §4.2). That is one extra generation pass per run. Returns
+    ``(metrics, forward_outputs, reverse_plain, reverse_chatml)`` so callers can run paired
+    significance on per-sentence scores from whichever basis they rank on.
     """
     import torch
     from transformers import AutoModelForCausalLM
@@ -373,8 +401,12 @@ def evaluate_run(
     classifier.to(device).eval()
 
     outs = generate_fn(model, model_tokenizer, prompts)
-    rev_prompts = [build_dia2std_prompt(o) for o in outs]
-    rev = generate_fn(model, model_tokenizer, rev_prompts)
+    rev_plain = generate_fn(model, model_tokenizer, [build_dia2std_prompt(o) for o in outs])
+    rev_chatml = generate_fn(
+        model,
+        model_tokenizer,
+        [build_dia2std_prompt_chatml(model_tokenizer, o, target_do) for o in outs],
+    )
 
     embed_fn = make_classifier_embed_fn(classifier, cls_tokenizer, device) if with_dfs else None
     metrics = evaluate_all(
@@ -386,8 +418,9 @@ def evaluate_run(
         classifier=classifier,
         cls_tokenizer=cls_tokenizer,
         embed_fn=embed_fn,
-        reverse_outputs=rev,
+        reverse_outputs=rev_plain,
+        reverse_outputs_chatml=rev_chatml,
     )
     del model
     torch.cuda.empty_cache()
-    return metrics, outs, rev
+    return metrics, outs, rev_plain, rev_chatml

@@ -56,3 +56,20 @@ def test_glossary_markdown_documents_direction():
     assert "↑ higher" in md
     # selection metric flagged
     assert "proxy-independent" in md
+
+
+def test_ranking_metric_is_the_training_format_recon():
+    """The leaderboard must rank on the prompt format the model was trained on."""
+    from ko_dialect.evaluation.leaderboard import DEFAULT_SELECT_BY, FIDELITY_AXIS
+
+    assert DEFAULT_SELECT_BY == "reconstruction_bleu_chatml"
+    assert FIDELITY_AXIS == "reconstruction_bleu_chatml"
+    assert is_higher_better("reconstruction_bleu_chatml")
+    assert get_spec("reconstruction_bleu_chatml").group == "selection"
+
+
+def test_format_sensitivity_is_lower_better_and_monitoring_only():
+    assert not is_higher_better("format_sensitivity")
+    assert orient("format_sensitivity", 3.0) == -3.0  # negated for max-sorting
+    # Never a selection target: a model could "win" by being uniformly bad in both formats.
+    assert get_spec("format_sensitivity").group == "monitoring"

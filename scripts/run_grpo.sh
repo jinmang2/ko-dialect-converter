@@ -9,13 +9,12 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# 1) Interpreter: the project env is the conda env that has ko_dialect + trl + unsloth.
+# 1) Interpreter: the uv-managed project venv, which has ko_dialect + trl + unsloth.
 #    Override with PYTHON=... if your env differs.
-# Project venv is uv-managed at ./.venv (the old conda env `balaenoptera` is gone).
-PYTHON="${PYTHON:-$(pwd)/.venv/bin/python}"
+PYTHON="${PYTHON:-./.venv/bin/python}"
 if [[ ! -x "$PYTHON" ]]; then
   echo "[run_grpo] no interpreter at $PYTHON — create it with:" >&2
-  echo "  make venv && make install && make install-unsloth" >&2
+  echo "  uv sync --extra dev --extra gpu" >&2
   exit 1
 fi
 

@@ -13,10 +13,10 @@ description: >
 # grpo-troubleshooting
 
 Playbook for **Stage-3 GRPO** (`scripts/stage3_grpo.py`, `src/ko_dialect/training/grpo_trainer.py`)
-on the dev box: **RTX 2060 (Turing SM 7.5, 6 GB)**, uv-managed venv `./.venv`
-(trl 1.5.1, transformers 5.5.4, torch 2.11+cu130, unsloth 2026.6.1).
-The old conda env `balaenoptera` was removed 2026-08-04 — rebuild with
-`uv venv --python 3.11 .venv && make install-torch && make install && make install-unsloth`.
+on the dev box: **RTX 2060 (Turing SM 7.5, 6 GB)**, uv-managed venv `.venv`
+(trl 1.12.0, transformers 5.16.1, torch 2.11.0+cu130, unsloth 2026.8.23 — the
+versions `uv.lock` resolves to). The old conda env `balaenoptera` was removed
+2026-08-04. Build the venv with `uv sync --extra dev --extra gpu`.
 
 **One command that bakes in every fix below:** `scripts/run_grpo.sh`
 (append Hydra overrides, e.g. `scripts/run_grpo.sh training.max_steps=200 logger=wandb`).
@@ -31,14 +31,18 @@ that makes *generation* fast and fits 6 GB, then worry about reward shaping.
 
 ### 1. Wrong interpreter / missing deps
 `ModuleNotFoundError: trl` (or torch). The system `python` is not the project env.
-→ Use `./.venv/bin/python` (has `ko_dialect` editable + trl + unsloth).
-`run_grpo.sh` defaults to it and fails loudly if missing; override with `PYTHON=...`.
+→ Use `.venv/bin/python`, or prefix with `uv run` (has `ko_dialect` editable +
+trl + unsloth). `run_grpo.sh` defaults to it and fails loudly if it is missing;
+override with `PYTHON=...`.
 
 ### 2. bitsandbytes: `OSError: libnvJitLink.so.13: cannot open shared object file`
 bnb 0.49 (pulled in by unsloth even for 16-bit) needs CUDA-13 `libnvJitLink.so.13`,
 which ships in the torch-cu130 wheels but isn't on the loader path.
 → `export LD_LIBRARY_PATH=$SITE_PACKAGES/nvidia/cu13/lib:$LD_LIBRARY_PATH`.
-Verify: `python -c "from bitsandbytes.cextension import lib; print(lib is not None)"` → `True`.
+Verify: `uv run python -c "from bitsandbytes.cextension import lib; print(lib is not None)"` → `True`.
+**As of bitsandbytes 0.50.2 (current lock) this loads on its own** — verified with
+`LD_LIBRARY_PATH` unset. `run_grpo.sh` still exports it, guarded by a directory check, so
+the fix stays in place for anyone pinned to bnb 0.49.
 Symptom if unfixed: 4-bit load dies with `Native code ... cquantize_blockwise_fp16_nf4`
 → transformers `RuntimeError: ... issues during automatic conversion of the weights`.
 

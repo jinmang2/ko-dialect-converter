@@ -96,7 +96,7 @@ def main(
         if model_tok.pad_token is None:
             model_tok.pad_token = model_tok.eos_token
         gen_fn = _make_generate_fn(device, strip=strip, max_new_tokens=max_new_tokens)
-        metrics, _outs, rev = evaluate_run(
+        metrics, _outs, _rev_plain, rev_chatml = evaluate_run(
             RunSpec(tag, base_model, adapter),
             prompts=prompts,
             gold=gold,
@@ -109,7 +109,8 @@ def main(
             generate_fn=gen_fn,
         )
         rows[tag] = metrics
-        recon[tag] = [sent_bleu.sentence_score(r, [s]).score for r, s in zip(rev, src)]
+        # Ranking basis: the training-format reverse pass (see leaderboard.py).
+        recon[tag] = [sent_bleu.sentence_score(r, [s]).score for r, s in zip(rev_chatml, src)]
 
     print("\n" + "=" * 76)
     print(f"PROSODY A/B — {target_do} std2dia, n={len(ds)}  (markers stripped before scoring)")

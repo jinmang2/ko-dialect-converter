@@ -31,7 +31,7 @@ DEFAULT_VARIANTS = "Q8_0,Q5_K_M,Q4_K_M,Q4_K_S"
 
 def sweep(
     merged: str = "outputs/sft_merged",
-    variants: str = DEFAULT_VARIANTS,
+    variants: str | tuple[str, ...] = DEFAULT_VARIANTS,
     out_dir: str = "ondevice/models",
     llama_cpp_dir: str = "llama.cpp",
     name: str = "kodialect",
@@ -48,7 +48,11 @@ def sweep(
     else:
         print(f"[convert] reuse existing {f16_path}")
 
-    targets = [v.strip() for v in variants.split(",") if v.strip()]
+    # fire turns `--variants Q8_0,Q5_K_M` into a tuple but leaves a single value a str,
+    # so normalise both shapes before splitting.
+    if isinstance(variants, str):
+        variants = variants.split(",")
+    targets = [v.strip() for v in variants if v.strip()]
     made = []
     for q in targets:
         dst = out / f"{name}-{q}.gguf"

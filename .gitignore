@@ -181,6 +181,11 @@ outputs/
 docs/RESULTS.md
 .gstack/
 
-# Vendored llama.cpp clone (GGUF export / on-device work). Not ours to track, and
-# leaving it visible makes the documented `ruff format .` rewrite ~186 upstream files.
+# Record of the pre-uv conda env (referenced from pyproject.toml); the env itself is
+# gone, so this freeze is the only remaining evidence of what it resolved to.
+!docs/env_snapshot/*.txt
+
+# Vendored llama.cpp clone (GGUF convert/quantize binaries) — build locally, never
+# commit. Leaving it visible also makes the documented `ruff format .` rewrite ~186
+# upstream files.
 llama.cpp/

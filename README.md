@@ -24,9 +24,8 @@ Eval/serve               cross-run leaderboard, multi-adapter serving, GGUF expo
 ## Install
 
 ```bash
-make install-torch     # torch (CUDA build) first
-make install           # the package + core deps  (pip install -e ".[dev]")
-make install-unsloth   # 2060-safe LoRA kernels
+make install           # the package + core deps, exactly as uv.lock resolves them
+make install-gpu       # + unsloth/xformers: 2060-safe LoRA kernels (CUDA only)
 make install-llama     # llama-cpp-python (GGUF serving)   — optional
 make check             # sanity: torch/CUDA, trl/peft/transformers
 ```

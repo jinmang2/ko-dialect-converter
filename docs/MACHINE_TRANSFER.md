@@ -159,7 +159,7 @@ scripts/transfer_to_host.sh <host> --tier results --go
 
 ```bash
 # 1) 환경
-make venv && make install && make install-unsloth
+make install && make install-gpu
 
 # 2) 파생 데이터 (zip만 받았으면 extract 먼저)
 python scripts/aihub_fetch.py extract                      # 또는 fetch --version all (재다운로드)
