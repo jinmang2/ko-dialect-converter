@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>KoDialect — Self-Development Portfolio</title>
+<style>
+  :root{
+    --bg:#0a0e16; --bg2:#0c1119; --card:#121823; --card2:#0f141d;
+    --line:#1e2531; --line2:#283041;
+    --green:#2ee6a6; --green-d:#1f9d77; --green-dim:#19433a;
+    --orange:#f5a623; --red:#ef5350; --cyan:#49b6e0; --violet:#9b8cff;
+    --tx:#e9eff5; --tx2:#aab4c0; --tx3:#6c7886; --tx4:#4a5462;
+    --mono:'DejaVu Sans Mono','Noto Sans Mono CJK KR',monospace;
+    --sans:'Helvetica Neue',Arial,'Noto Sans CJK KR','NanumSquare',sans-serif;
+  }
+  @page{ size:13.333in 7.5in; margin:0; }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ background:var(--bg); }
+  body{ font-family:var(--sans); -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+  .slide{
+    position:relative; width:13.333in; height:7.5in; overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 100% 0%, rgba(46,230,166,.07), transparent 42%),
+      radial-gradient(90% 70% at 0% 100%, rgba(73,182,224,.05), transparent 50%),
+      var(--bg);
+    color:var(--tx); padding:48px 60px 46px;
+    display:flex; flex-direction:column; page-break-after:always;
+  }
+  .slide:last-child{ page-break-after:auto; }
+
+  .topbar{ display:flex; align-items:center; gap:12px; font-size:13.5px; color:var(--tx2);
+    border-bottom:1px solid var(--line); padding-bottom:11px; margin-bottom:6px; font-weight:600; }
+  .topbar .tick{ width:5px; height:17px; background:var(--green); border-radius:2px; display:inline-block; }
+  .topbar b{ color:var(--tx); font-weight:800; }
+  .topbar .sep{ color:var(--tx4); }
+  .topbar .sub{ color:var(--tx2); font-weight:600; }
+
+  .eyebrow{ display:flex; align-items:center; gap:12px; color:var(--green);
+    font-size:13.5px; font-weight:800; letter-spacing:.12em; text-transform:uppercase; }
+  .eyebrow::before{ content:""; width:30px; height:3px; background:var(--green); border-radius:2px; }
+
+  h1.title{ font-size:34px; font-weight:800; letter-spacing:-.4px; margin-top:9px; }
+  h1.title .acc{ color:var(--green); }
+  h1.title small{ display:block; font-size:16px; font-weight:600; color:var(--tx2); margin-top:5px; letter-spacing:0; }
+
+  .footer{ position:absolute; left:60px; bottom:20px; font-size:11.5px; color:var(--tx4); letter-spacing:.04em; }
+  .pageno{ position:absolute; right:60px; bottom:20px; font-size:11.5px; color:var(--tx4); }
+
+  .body{ flex:1; display:flex; flex-direction:column; min-height:0; }
+  .row{ display:flex; gap:18px; }
+  .col{ display:flex; flex-direction:column; gap:12px; }
+  .grow{ flex:1; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:13px; padding:16px 18px; }
+  .card.flush{ padding:13px 15px; }
+  .ch{ color:var(--green); font-size:15.5px; font-weight:800; margin-bottom:9px; }
+  .ch.orange{ color:var(--orange); } .ch.cyan{ color:var(--cyan); } .ch.red{ color:var(--red); }
+  ul.clean{ list-style:none; }
+  ul.clean li{ position:relative; padding-left:15px; font-size:13.5px; line-height:1.55; color:var(--tx2); margin:3px 0; }
+  ul.clean li::before{ content:"·"; position:absolute; left:2px; color:var(--green); font-weight:800; }
+  ul.clean li b{ color:var(--tx); font-weight:700; }
+  ul.clean li .hl{ color:var(--green); font-weight:700; }
+  ul.clean li .warn{ color:var(--orange); font-weight:700; }
+  .lede{ font-size:14.5px; line-height:1.62; color:var(--tx2); }
+  .lede b{ color:var(--tx); } .lede .hl{ color:var(--green); font-weight:700; } .lede .warn{ color:var(--orange); font-weight:700; }
+
+  /* WHAT / WHY / HOW block — the spine of every technical slide */
+  .wwh{ display:flex; flex-direction:column; gap:9px; }
+  .wwh .r{ display:flex; gap:11px; align-items:flex-start; }
+  .wwh .lab{ flex:0 0 50px; font-size:11px; font-weight:800; letter-spacing:.06em; padding:3px 0;
+    text-align:center; border-radius:6px; }
+  .wwh .lab.what{ color:#cdd6e0; border:1px solid var(--line2); }
+  .wwh .lab.why{ color:#06281f; background:var(--green); }
+  .wwh .lab.how{ color:#04222e; background:var(--cyan); }
+  .wwh .t{ font-size:13.5px; line-height:1.55; color:var(--tx2); padding-top:1px; }
+  .wwh .t b{ color:var(--tx); font-weight:700; } .wwh .t .hl{ color:var(--green); font-weight:700; }
+  .wwh .t .warn{ color:var(--orange); font-weight:700; } .wwh .t code{ font-family:var(--mono); font-size:12px; color:var(--cyan); }
+
+  /* deep-insight highlight */
+  .insight{ border:1.5px solid var(--green-d); border-radius:12px; padding:14px 16px;
+    background:linear-gradient(180deg, rgba(46,230,166,.08), rgba(46,230,166,.02)); }
+  .insight .tag{ display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.1em;
+    color:#06281f; background:var(--green); border-radius:5px; padding:2px 8px; margin-bottom:8px; }
+  .insight .t{ font-size:13.5px; line-height:1.6; color:var(--tx); }
+  .insight .t code{ font-family:var(--mono); font-size:12px; color:var(--green); }
+  .insight .t .em{ color:var(--green); font-weight:700; }
+
+  /* decision card */
+  .dcard{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:0; overflow:hidden; }
+  .dcard .hd{ background:var(--card2); padding:10px 15px; font-size:14.5px; font-weight:800; color:var(--tx);
+    border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; }
+  .dcard .hd .num{ color:var(--green); font-size:22px; font-weight:800; }
+  .dcard .bd{ padding:11px 15px; }
+  .dcard .ln{ font-size:12.8px; line-height:1.5; color:var(--tx2); margin:4px 0; }
+  .dcard .ln .k{ display:inline-block; width:42px; font-weight:800; font-size:10.5px; letter-spacing:.04em; }
+  .dcard .k.p{ color:var(--red); } .dcard .k.m{ color:var(--orange); } .dcard .k.x{ color:var(--green); }
+  .dcard .ln b{ color:var(--tx); } .dcard .ln .hl{ color:var(--green); font-weight:700; }
+  .dcard .one{ font-size:12.5px; line-height:1.5; color:var(--tx); border-top:1px dashed var(--line2);
+    margin-top:8px; padding-top:8px; font-style:italic; }
+  .dcard .one::before{ content:"\201C"; color:var(--green); } .dcard .one::after{ content:"\201D"; color:var(--green); }
+
+  /* causal chain */
+  .causal{ display:flex; align-items:stretch; gap:0; }
+  .cstep{ flex:1; background:var(--card2); border:1px solid var(--line); border-radius:11px; padding:12px 11px; text-align:center; }
+  .cstep.hot{ border-color:var(--orange); } .cstep.fix{ border-color:var(--green-d); }
+  .cstep .cap{ font-size:10px; letter-spacing:.12em; color:var(--tx3); text-transform:uppercase; font-weight:700; }
+  .cstep .t{ font-size:14px; font-weight:800; color:var(--tx); margin:5px 0 3px; }
+  .cstep .d{ font-size:11px; color:var(--tx3); line-height:1.4; }
+  .cstep .d .o{ color:var(--orange); font-weight:700; } .cstep .d .g{ color:var(--green); font-weight:700; }
+  .carrow{ align-self:center; display:flex; flex-direction:column; align-items:center; padding:0 7px; flex:0 0 auto; }
+  .carrow .m{ font-size:9.5px; color:var(--orange); font-weight:700; white-space:nowrap; margin-bottom:2px; }
+  .carrow .a{ color:var(--tx4); font-size:18px; }
+
+  /* hero */
+  .heros{ display:flex; gap:14px; }
+  .hero{ flex:1; background:var(--card2); border:1px solid var(--line); border-radius:11px; padding:14px 16px; text-align:center; }
+  .hero .n{ font-size:30px; font-weight:800; line-height:1.05; }
+  .hero .n.g{ color:var(--green); } .hero .n.o{ color:var(--orange); } .hero .n.c{ color:var(--cyan); }
+  .hero .l{ font-size:11.5px; color:var(--tx3); margin-top:6px; line-height:1.4; }
+
+  /* pipeline */
+  .pipe{ display:flex; align-items:stretch; }
+  .pbox{ flex:1; border:1.5px solid var(--line2); border-radius:11px; background:var(--card2); padding:11px 9px; text-align:center; }
+  .pbox.green{ border-color:var(--green-d); } .pbox.cyan{ border-color:#2c7da0; }
+  .pbox .cap{ font-size:10px; letter-spacing:.14em; color:var(--tx3); text-transform:uppercase; font-weight:700; }
+  .pbox .t{ font-size:14px; font-weight:800; margin:6px 0 3px; color:var(--tx); }
+  .pbox .d{ font-size:10.5px; color:var(--tx3); line-height:1.4; }
+  .pbox .d .g{ color:var(--green); }
+  .chips{ display:flex; flex-wrap:wrap; gap:4px; justify-content:center; margin:5px 0 3px; }
+  .chip{ font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:5px; border:1px solid var(--green-d); color:var(--green); background:rgba(46,230,166,.06); }
+  .chip.cy{ border-color:#2c7da0; color:var(--cyan); }
+  .arrow{ align-self:center; color:var(--tx4); font-size:18px; padding:0 4px; }
+
+  table.t{ width:100%; border-collapse:collapse; font-size:13px; }
+  table.t th{ text-align:left; color:var(--tx3); font-weight:700; font-size:11px; text-transform:uppercase; letter-spacing:.05em; padding:7px 9px; border-bottom:1px solid var(--line2); }
+  table.t td{ padding:7px 9px; border-bottom:1px solid var(--line); color:var(--tx2); }
+  table.t tr:last-child td{ border-bottom:none; }
+  table.t td b{ color:var(--tx); } table.t td .g{ color:var(--green); font-weight:700; }
+  table.t td .o{ color:var(--orange); font-weight:700; } table.t td .r{ color:var(--red); font-weight:700; }
+  table.t tr.best td{ background:rgba(46,230,166,.05); }
+  .star{ color:var(--green); }
+
+  pre.code{ background:#0b0f17; border:1px solid var(--line2); border-radius:9px; padding:11px 13px; font-family:var(--mono); font-size:11.5px; line-height:1.55; color:#c9d4e0; }
+  pre.code .k{ color:var(--violet); } pre.code .g{ color:var(--green); } pre.code .o{ color:var(--orange); } pre.code .c{ color:var(--tx4); } pre.code .y{ color:var(--cyan); }
+  .why-tag{ color:var(--green); font-weight:800; }
+
+  .checks li{ list-style:none; position:relative; padding-left:24px; font-size:13.5px; line-height:1.45; color:var(--tx2); margin:7px 0; }
+  .checks li::before{ content:"✓"; position:absolute; left:0; top:0; color:var(--green); font-weight:800; }
+  .checks li b{ color:var(--tx); font-weight:700; }
+  .warnbox{ border:1px solid #5a3a1a; background:rgba(245,166,35,.06); border-radius:9px; padding:8px 12px; font-size:12px; color:var(--orange); line-height:1.45; }
+  .note{ font-size:11.5px; color:var(--tx3); }
+  .kpill{ display:inline-block; font-size:11.5px; font-weight:700; color:var(--tx2); border:1px solid var(--line2); border-radius:20px; padding:3px 11px; margin:3px 5px 3px 0; }
+  .kpill .g{ color:var(--green); }
+
+  .cover{ justify-content:center; }
+  .cover .big{ font-size:66px; font-weight:800; letter-spacing:-1.4px; line-height:1.04; margin:18px 0 16px; }
+  .cover .big .acc{ color:var(--green); }
+  .cover .ul{ width:120px; height:4px; background:var(--green); border-radius:2px; margin:4px 0 20px; }
+  .cover .ident{ font-size:21px; color:var(--tx); font-weight:700; line-height:1.5; }
+  .cover .ident .g{ color:var(--green); }
+  .cover .sub{ font-size:15px; color:var(--tx2); font-weight:600; line-height:1.6; margin-top:14px; }
+  .cover .sub .g{ color:var(--green); }
+  .divider-tag{ color:var(--tx3); font-size:13px; margin-top:22px; }
+</style>
+</head>
+<body>
+
+<!-- ===================== S1 · COVER + IDENTITY ===================== -->
+<section class="slide cover">
+  <div class="eyebrow">SELF-DEVELOPMENT · RLHF / GRPO</div>
+  <div class="big"><span class="acc">KoDialect</span></div>
+  <div class="ul"></div>
+  <div class="ident">"측정으로 의사결정하는 sLLM 엔지니어 —<br>작은 모델을 도메인 제품으로 <span class="g">끝까지</span> 만든다."</div>
+  <div class="sub">reward hacking을 <span class="g">직감이 아니라 실측</span>으로 발견하고, 보상·집계·선택 세 층위에서 막은 RL 프로젝트.</div>
+  <div class="divider-tag">한국어 방언 → 표준어 번역 &nbsp;·&nbsp; Qwen2.5-0.5B &nbsp;·&nbsp; RTX 2060 6GB &nbsp;·&nbsp; SFT → TextCNN 보상 → GRPO</div>
+  <div class="footer">Project PT Presentation</div>
+</section>
+
+<!-- ===================== S2 · 측정→진단→처방 인과 사슬 ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">한 장 요약 — 의사결정은 모두 측정에서 나왔다</span></div>
+  <h1 class="title">측정 → 진단 → 처방 <small>이 프로젝트의 모든 결정은 경험이 아니라 숫자에서 출발한다</small></h1>
+  <div class="body" style="margin-top:16px; justify-content:center;">
+    <div class="causal" style="margin-bottom:20px;">
+      <div class="cstep"><div class="cap">제약</div><div class="t">6GB · fp16</div><div class="d">RTX 2060 Turing<br>native BF16 없음</div></div>
+      <div class="carrow"><div class="m">측정 44×</div><div class="a">→</div></div>
+      <div class="cstep"><div class="cap">백엔드</div><div class="t">16-bit LoRA</div><div class="d">4bit 146s/step vs<br><span class="g">3.4s/step</span></div></div>
+      <div class="carrow"><div class="m">측정 보상↑·chrF↓</div><div class="a">→</div></div>
+      <div class="cstep hot"><div class="cap">진단</div><div class="t">over-opt</div><div class="d"><span class="o">−9~11pt</span> 충실도↓<br>프록시만 게임</div></div>
+      <div class="carrow"><div class="m">처방 3층위</div><div class="a">→</div></div>
+      <div class="cstep fix"><div class="cap">대응</div><div class="t">KL·MO·proxy</div><div class="d"><span class="g">β↑ · z-norm</span><br>proxy-indep 선택</div></div>
+      <div class="carrow"><div class="m">정량화</div><div class="a">→</div></div>
+      <div class="cstep fix"><div class="cap">결론</div><div class="t">Pareto</div><div class="d">방언 의존적<br><span class="g">p=0.802</span> ns</div></div>
+    </div>
+    <div class="row">
+      <div class="card grow"><div class="lede"><b style="color:#fff">왜 이 한 장이 핵심인가.</b> 면접에서 가장 많이 받은 추궁은 "그거 측정해서 결정한 거예요, 경험으로 한 거예요?"였다. 이 프로젝트는 <span class="hl">매 결정마다 측정값이 앞에 있다</span> — 44×를 재고 백엔드를 정했고, 보상↑·chrF↓를 재고 over-optimization을 진단했다. 아래 슬라이드들은 이 사슬의 각 마디를 WHAT·WHY·HOW로 펼친다.</div></div>
+    </div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">2</div>
+</section>
+
+<!-- ===================== S3 · 문제·제약 (what/why/how) ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">문제와 제약 — 하드웨어가 설계를 지배</span></div>
+  <h1 class="title">Problem &amp; Constraint</h1>
+  <div class="body" style="margin-top:16px;">
+    <div class="row grow">
+      <div class="card grow"><div class="ch">과제와 본질적 난제</div>
+        <div class="wwh">
+          <div class="r"><div class="lab what">WHAT</div><div class="t">한국어 <b>방언 ↔ 표준어 양방향 번역</b>을 0.8B급 소형 LM으로. 본질 난제는 <b>style↔content 음의 상관</b>(방언성↑ → 의미보존↓) + 보상 모델이 hackable.</div></div>
+          <div class="r"><div class="lab why">WHY</div><div class="t">작은 모델이라 큰 보상(LLM-judge)을 못 쓰고, 큰 데이터·큰 모델로 밀어붙일 수 없다 → <span class="hl">"측정으로 정직하게" 푸는 게 유일한 경로</span>.</div></div>
+          <div class="r"><div class="lab how">HOW</div><div class="t">제약을 코드로 강제: 모든 config <code>bf16:false</code>, 보상은 registry로 교체, 선택은 proxy-independent 신호로.</div></div>
+        </div>
+      </div>
+      <div class="card grow"><div class="ch orange">하드웨어 제약 = 설계 강제</div>
+        <div class="heros" style="margin:2px 0 10px;">
+          <div class="hero"><div class="n o">RTX 2060</div><div class="l">6GB · Turing SM7.5<br>native BF16 없음</div></div>
+          <div class="hero"><div class="n g">44×</div><div class="l">16-bit LoRA 3.4s/step<br>vs 4bit 146s/step</div></div>
+        </div>
+        <div class="wwh">
+          <div class="r"><div class="lab why">WHY</div><div class="t">bf16은 SM 8.0+(Ampere)부터. Turing에 요청하면 <span class="warn">조용히 degrade</span>, bnb 경로에선 <code>unscale BFloat16</code> 크래시 — silent failure가 가장 위험.</div></div>
+          <div class="r"><div class="lab how">HOW</div><div class="t"><code>resolve_dtype</code>가 device capability major&lt;8을 감지하면 bf16→fp16 강등 + 경고 (<code>loading.py:86-107</code>).</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">3</div>
+</section>
+
+<!-- ===================== S4 · 아키텍처 + SSOT why ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">시스템 아키텍처 + 드리프트 차단</span></div>
+  <h1 class="title">Architecture <small>각 설계는 "이걸 안 하면 무슨 실패가 나는가"에 답한다</small></h1>
+  <div class="body" style="margin-top:16px;">
+    <div class="pipe" style="margin-bottom:16px;">
+      <div class="pbox"><div class="cap">PREP</div><div class="t">prepare_data</div><div class="d"><span class="g">double-ptr</span> 어절정렬<br>MapReduce 스트리밍</div></div>
+      <div class="arrow">→</div>
+      <div class="pbox green"><div class="cap">STAGE 1·2</div><div class="t">SFT + 보상모델</div><div class="chips"><span class="chip">QLoRA</span><span class="chip">TextCNN</span></div><div class="d">분류기 <span class="g">F1 0.95</span></div></div>
+      <div class="arrow">→</div>
+      <div class="pbox green"><div class="cap">STAGE 3</div><div class="t">GRPO</div><div class="chips"><span class="chip">style</span><span class="chip">copy_margin</span><span class="chip">edit</span></div><div class="d">보상 = style+가드</div></div>
+      <div class="arrow">→</div>
+      <div class="pbox cyan"><div class="cap">EVAL · SERVE</div><div class="t">정직한 선택</div><div class="chips"><span class="chip cy">Pareto</span><span class="chip cy">GGUF</span></div><div class="d"><span class="g">proxy-indep</span> 선택</div></div>
+    </div>
+    <div class="insight">
+      <span class="tag">SSOT — 왜 단일 출처인가</span>
+      <div class="t"><b style="color:#fff">막는 구체적 사고:</b> TextCNN 분류기는 라벨 정수 id를 <span class="em">출력 뉴런 인덱스</span>로 학습했다. 누가 지역을 알파벳순 재정렬하면 — 코드는 멀쩡히 돌지만 — "gangwon 뉴런"이 다른 라벨을 가리켜 <span class="em">보상 <code>P(dia)−P(std)</code>가 조용히 틀린 클래스를 읽는다</span>(컴파일 에러도 예외도 없는 최악의 버그). 그래서 라벨을 <b style="color:#fff">append-only로 고정</b>(<code>labels.py:7-22</code>), 지표 방향은 <code>metric_registry</code>가 단일 등록 → 호출부는 <code>orient()</code>로 물어본다. drift를 *디버깅*이 아니라 *구조*로 차단.</div>
+    </div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">4</div>
+</section>
+
+<!-- ===================== S5 · ★ 보상해킹: 발견 (측정) ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">★ 핵심 서사 1/2 — 보상해킹의 발견</span></div>
+  <h1 class="title"><span style="color:var(--green)">★</span> 측정으로 실패를 잡다 <small>"보상이 오르는데 번역이 나빠진다" — 이게 왜 게임의 증거인가</small></h1>
+  <div class="body" style="margin-top:16px;">
+    <div class="row grow">
+      <div class="card grow"><div class="ch red">함정: TextCNN은 왜 hackable한가</div>
+        <div class="wwh">
+          <div class="r"><div class="lab what">WHAT</div><div class="t">TextCNN 보상은 <b>max-over-time pooling</b> — 문장 전체에서 각 필터의 <b>최댓값 1개</b>만 취한다.</div></div>
+          <div class="r"><div class="lab why">WHY</div><div class="t">특정 방언 트리거 n-gram이 <span class="warn">한 번이라도</span> 나오면 그 필터가 포화 → 문장을 과장·반복하면 보상이 오른다. <span class="hl">길이 무관(싸다)이라는 장점이 곧 해킹 표면</span>.</div></div>
+          <div class="r"><div class="lab how">HOW</div><div class="t">채택하되 트레이드오프를 알고 충실도 가드로 둘러쌈 (<code>classifier.py</code> max-pool).</div></div>
+        </div>
+      </div>
+      <div class="col grow">
+        <div class="card"><div class="ch orange">증거: 500-step 실측</div>
+          <ul class="clean">
+            <li>분류기 보상 <b>↑</b> (TDR이 <i>gold 자신의</i> TDR을 초과)</li>
+            <li>그런데 chrF/BLEU vs gold <span class="warn">−9~11pt 하락</span></li>
+            <li><b>왜 노이즈가 아니라 게임인가:</b> 정책이 gold에서 *멀어지는데* 프록시만 오른다 = 정의상 over-optimization</li>
+          </ul>
+        </div>
+        <div class="warnbox">⚠ DIA-REFINE "False Success": 소스를 그대로 복사한 베이스라인이 BLEU 52.5인데 DFS는 −0.67(음수). <b>n-gram 지표는 입력 복사를 보상한다</b> — 측정의 함정을 논문이 먼저 경고했고, 우리 실측이 재현했다.</div>
+      </div>
+    </div>
+    <div class="card flush" style="margin-top:14px;"><div class="lede"><b style="color:#fff">한 줄.</b> 면접에서 "CoT+RL이 왜 추론을 올리나"에 막혔던 그 자리 — 이 프로젝트는 RL을 직접 돌려 <span class="hl">보상을 게임하는 실패까지 측정으로 봤다</span>. 이론으로 아는 사람이 아니라, 돌려보고 함정까지 아는 사람.</div></div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">5</div>
+</section>
+
+<!-- ===================== S6 · ★ 보상해킹: 3층위 처방 + 딥 인사이트 ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">★ 핵심 서사 2/2 — 세 층위 처방</span></div>
+  <h1 class="title"><span style="color:var(--green)">★</span> 보상·집계·선택 세 층위에서 막다</h1>
+  <div class="body" style="margin-top:14px;">
+    <div class="row grow">
+      <div class="col" style="flex:1.05">
+        <div class="dcard">
+          <table class="t">
+            <tr><th>층위</th><th>처방</th><th>왜 (원리)</th></tr>
+            <tr><td><b>강도</b></td><td>KL β <span class="g">0.04→0.1</span></td><td>SFT가 chrF <b>천장</b> → 정책을 그 근처에 앵커</td></tr>
+            <tr><td><b>설계</b></td><td>style 디모트 + <span class="g">copy_margin</span></td><td>style 단독은 "표준 이탈" 무한 push → 게임</td></tr>
+            <tr><td><b>집계</b></td><td><span class="g">MO-GRPO</span> z-norm 후 합</td><td>고분산 style 축이 advantage 지배 방지</td></tr>
+            <tr><td><b>선택</b></td><td><span class="g">recon_bleu</span></td><td>학습 보상과 겹친 지표로 고르면 순환성</td></tr>
+          </table>
+        </div>
+        <div class="note" style="margin-top:8px;">집계 순서를 바꾼 게 핵심: <b style="color:#fff">sum→normalize(고분산 축 지배)</b> 대신 <b style="color:var(--green)">축별 normalize→sum</b> (MO-GRPO, arXiv:2509.22047). 코드 <code>mo_grpo_trainer.py:47-93</code>.</div>
+      </div>
+      <div class="col" style="flex:1">
+        <div class="insight" style="flex:1;">
+          <span class="tag">DEEP INSIGHT — GRPO를 진짜 이해했다는 증거</span>
+          <div class="t"><code>copy_margin = chrF(gen,gold) − chrF(gen,source)</code><br><br>
+          <b style="color:#fff">왜 이게 진짜 패널티인가:</b> GRPO advantage는 한 프롬프트 그룹 안에서 <code>(r−mean)/std</code>로 정규화된다. 여기서 <code>chrF(gen,source)</code>는 <span class="em">gen마다 다른 값(gen-의존)</span>이라 그룹에서 <span class="em">상수처럼 소거되지 않는다</span> → 입력 복사를 실제로 벌한다.<br>
+          반대로 plain <code>chrF(gen,gold)</code>의 copy-baseline은 <span class="em">그룹 상수</span>라 정규화에서 소거 → 그래서 r_content에선 <span class="em">일부러 생략</span>했다.</div>
+        </div>
+      </div>
+    </div>
+    <div class="card flush" style="margin-top:12px;"><div class="lede"><b style="color:#fff">메타 원칙.</b> 선택을 학습 보상과 같은 프록시(J-score/TDR)로 하면 over-optimization을 *다시 끌어들인다*(순환성). 그래서 <span class="hl">분류기를 전혀 안 쓰는 reconstruction_bleu(역번역 일관성)로만 선택</span> — 이 규칙은 논문 권고가 아니라 우리 추론이라 REFERENCES에 정직하게 표기.</div></div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">6</div>
+</section>
+
+<!-- ===================== S7 · 의사결정 카드 (측정→진단→처방) ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">의사결정 카드 — 측정 → 진단 → 처방</span></div>
+  <h1 class="title">Decision Cards <small>"경험으로 했나, 측정으로 했나"에 대한 답</small></h1>
+  <div class="body" style="margin-top:16px;">
+    <div class="row grow">
+      <div class="dcard grow">
+        <div class="hd"><span>16-bit LoRA vs 4-bit QLoRA</span><span class="num">44×</span></div>
+        <div class="bd">
+          <div class="ln"><span class="k p">기각</span> 4bit는 메모리엔 좋아 보이나 — </div>
+          <div class="ln"><span class="k m">측정</span> 2060에서 4bit <b>146s/step</b> vs 16-bit LoRA <span class="hl">3.4s/step</span></div>
+          <div class="ln"><span class="k m">진단</span> Turing엔 빠른 4bit dequant 커널이 없고, GRPO는 step마다 생성 → dequant 비용이 토큰 수만큼 폭증</div>
+          <div class="ln"><span class="k x">처방</span> <code style="font-family:var(--mono);font-size:11px;color:var(--cyan)">load_in_4bit:false</code>, peak VRAM 2.7GB (<code style="font-family:var(--mono);font-size:11px;color:var(--cyan)">loading.py:140-166</code>)</div>
+          <div class="one">메모리 절약 ≠ 빠름. 커널 지원이 없으면 양자화가 손해 — 44배를 실측하고 정했습니다.</div>
+        </div>
+      </div>
+      <div class="dcard grow">
+        <div class="hd"><span>GRPO vs PPO</span><span class="num">no critic</span></div>
+        <div class="bd">
+          <div class="ln"><span class="k p">기각</span> PPO는 critic(value net)을 별도 학습 → actor와 따로 메모리를 더 먹어 6GB에 actor+rollout과 함께 올리기 빠듯</div>
+          <div class="ln"><span class="k m">근거</span> GRPO는 critic을 그룹 상대 advantage <code style="font-family:var(--mono);font-size:11px;color:var(--cyan)">(r−mean)/std</code>로 대체</div>
+          <div class="ln"><span class="k m">진단</span> 같은 프롬프트 그룹 평균이 baseline 역할 → 분산 감소는 유지, value net은 불필요</div>
+          <div class="ln"><span class="k x">처방</span> GRPO + KL-to-ref 앵커, G=4, peak 2.7GB (<code style="font-family:var(--mono);font-size:11px;color:var(--cyan)">grpo_trainer.py</code>)</div>
+          <div class="one">6GB 제약이 알고리즘을 강제했습니다 — critic을 그룹 평균으로 대체해 학습 메모리를 크게 줄였습니다.</div>
+        </div>
+      </div>
+    </div>
+    <div class="warnbox" style="margin-top:14px;border-color:var(--line2);background:var(--card2);color:var(--tx2);">
+      <b style="color:var(--green)">정직 부록:</b> 운율 마커는 "방언성↑" 가설로 넣었지만, A/B 실측 결과 recon_bleu만 +3.9/+6.4(p&lt;.001)↑·방언 축 flat → <b style="color:#fff">가설이 틀렸음을 측정으로 확인하고 "충실도 정규화"로 결론 정정</b>. 측정-우선의 증거는 맞힌 것보다 *틀린 걸 측정으로 안 것*에 있다.</div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">7</div>
+</section>
+
+<!-- ===================== S8 · 핵심 수식 + why ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">핵심 수식 — 공식이 아니라 "왜"를 안다</span></div>
+  <h1 class="title">Formulas, with the <span style="color:var(--green)">Why</span></h1>
+  <div class="body" style="margin-top:14px;">
+    <div class="row grow">
+      <div class="col grow">
+        <div class="card grow">
+<pre class="code"><span class="c"># GRPO advantage</span>
+Â_i = (r_i − <span class="g">mean</span>(r_1..r_G)) / <span class="g">std</span>(r_1..r_G)</pre>
+          <div class="note" style="margin-top:7px;"><span class="why-tag">WHY</span> 그룹 평균이 critic(value net)을 대체하는 baseline → value net을 안 들어 학습 메모리 절감(6GB에서 결정적). std로 나눠 보상 스케일에 불변.</div>
+        </div>
+        <div class="card grow">
+<pre class="code"><span class="c"># DAPO Clip-Higher</span>
+clip(ρ, 1−ε_low, 1+ε_high)  <span class="o">0.2 &lt; 0.28</span></pre>
+          <div class="note" style="margin-top:7px;"><span class="why-tag">WHY</span> 비대칭 — 좋은 토큰이 줄어드는 것보다 더 크게 자라게 허용 → 희귀 정답 확률 상승을 억누르는 entropy collapse 방지.</div>
+        </div>
+      </div>
+      <div class="col grow">
+        <div class="card grow">
+<pre class="code"><span class="c"># MO-GRPO</span>
+Â = Σ_k (r_k − <span class="g">mean_g</span>(r_k)) / (<span class="g">std_g</span>(r_k)+ε)</pre>
+          <div class="note" style="margin-top:7px;"><span class="why-tag">WHY</span> sum 먼저 하면 range 넓은 축(style)이 advantage 지배 → <b style="color:#fff">축별 정규화 후 sum</b>으로 순서를 바꿔 모든 축 기여 균등화.</div>
+        </div>
+        <div class="card grow">
+<pre class="code"><span class="c"># 선택 신호 (proxy-independent)</span>
+recon_bleu = BLEU(<span class="g">backtranslate</span>(gen), source)</pre>
+          <div class="note" style="margin-top:7px;"><span class="why-tag">WHY</span> 분류기·eojeol_map을 전혀 안 씀 → 학습 보상과 독립 경로라 같은 over-optimization으로 게임 불가. (Koehn paired bootstrap으로 유의성까지.)</div>
+        </div>
+      </div>
+    </div>
+    <div class="card flush" style="margin-top:12px;"><div class="lede" style="font-size:13px;"><b style="color:#fff">LoRA</b> <code style="font-family:var(--mono);color:var(--cyan)">h=W₀x+(α/r)BA</code>, B=0 at init, r=16/α=32 → α/r=2 · <span class="why-tag">WHY</span> ΔW가 low intrinsic rank를 가진다는 가설 → 8.8M/512M 파라미터만 학습, base frozen, merge하면 추론 지연 0.</div></div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">8</div>
+</section>
+
+<!-- ===================== S9 · 평가 정직성 ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">평가 방법론 — 정직성</span></div>
+  <h1 class="title">Honest Evaluation <small>"단일 숫자로 우열을 강요하지 않는다"</small></h1>
+  <div class="body" style="margin-top:16px;">
+    <div class="row grow">
+      <div class="card grow"><div class="ch">Pareto 프런티어</div>
+        <div class="wwh">
+          <div class="r"><div class="lab why">WHY</div><div class="t">style↔content는 <b>음의 상관</b> → 한 숫자로 줄 세우면 반드시 한 축을 임의 희생. "하나 골라"가 틀린 질문.</div></div>
+          <div class="r"><div class="lab how">HOW</div><div class="t">(copy_margin↑ × recon_bleu↑)에서 지배당하지 않는 집합 (<code>leaderboard.py:150-171</code>).</div></div>
+        </div>
+      </div>
+      <div class="card grow"><div class="ch">Koehn paired bootstrap</div>
+        <div class="wwh">
+          <div class="r"><div class="lab why">WHY</div><div class="t">150문장 점추정은 sampling noise. "37.1 vs 38.4가 <b>유의한가</b>"를 모르면 해석 불가.</div></div>
+          <div class="r"><div class="lab how">HOW</div><div class="t">같은 인덱스를 두 시스템에 동시 리샘플 B=1000, 양측 p. 신뢰 <b>≥~300문장</b> (<code>significance.py:99-144</code>).</div></div>
+        </div>
+      </div>
+      <div class="card grow"><div class="ch">proxy-independent 선택</div>
+        <div class="wwh">
+          <div class="r"><div class="lab why">WHY</div><div class="t">선택 지표가 학습 보상과 겹치면 over-optimization 재유입 → "측정으로 잡겠다"는 목적 자체가 무너짐.</div></div>
+          <div class="r"><div class="lab how">HOW</div><div class="t">recon_bleu로만 랭크, J-score/TDR/DFS는 monitoring only (<code>metric_registry</code> group 강제).</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">9</div>
+</section>
+
+<!-- ===================== S10 · 결과 ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">결과 (실측) — 인과로 읽기</span></div>
+  <h1 class="title">Results <small>GRPO 우위는 방언 의존적 — 단일 승자가 없다</small></h1>
+  <div class="body" style="margin-top:14px;">
+    <div class="row grow">
+      <div class="col" style="flex:1.25">
+        <div class="dcard"><table class="t">
+          <tr><th>OVERALL (n=300)</th><th>recon↑</th><th>copy_margin↑</th><th>chrF↑</th><th>비고</th></tr>
+          <tr class="best"><td><b>SFT</b> <span class="star">★</span></td><td><b>38.96</b></td><td>−3.47</td><td>68.1</td><td>충실도 ceiling</td></tr>
+          <tr class="best"><td><b>grpo_500</b></td><td>38.38</td><td><span class="g">−0.63</span></td><td>59.4</td><td>세 스코프 Pareto</td></tr>
+          <tr><td>grpo_v2</td><td>38.07</td><td>−1.13</td><td>62.6</td><td>경상 best</td></tr>
+          <tr class="best"><td><b>grpo_arm2</b></td><td>37.76</td><td>−1.77</td><td>65.2</td><td>overall Pareto</td></tr>
+          <tr><td>grpo_arm1</td><td>37.08</td><td>−1.04</td><td>62.6</td><td><span class="r">p=0.046 유의↓</span></td></tr>
+        </table></div>
+        <div class="warnbox" style="border-color:var(--green-d);background:rgba(46,230,166,.05);color:var(--green);margin-top:10px;">✓ grpo_500의 recon 적자 vs SFT는 <b>통계적으로 유의하지 않다</b> — paired bootstrap <b>Δ−0.34, p=0.802</b>. 점수차가 노이즈 범위라는 걸 *검정으로* 말한다.</div>
+      </div>
+      <div class="col" style="flex:1">
+        <div class="card grow"><div class="ch">Pareto <span style="color:var(--tx3);font-size:12px;font-weight:600;">(copy_margin↑ × recon↑)</span></div>
+          <ul class="clean">
+            <li><b>강원</b>(gold≈표준) = {SFT, arm2, 500} → <span class="hl">SFT 우세</span> (복사가 유리)</li>
+            <li><b>경상</b>(뚜렷) = {v2, 500} → <span class="hl">GRPO 우세</span> (copy_margin <b>+1.12</b> 양수 교차)</li>
+            <li><b>OVERALL</b> = {SFT, arm2, 500}</li>
+          </ul>
+        </div>
+        <div class="card"><div class="lede" style="font-size:14px;"><b style="color:#fff">왜 단일 승자가 없나.</b> 강원은 gold가 표준에 가까워 SFT의 복사가 유리하고, 경상은 변환 폭이 커 GRPO가 이긴다. <b>grpo_500이 세 스코프 모두 Pareto</b> = 가장 robust. 억지로 1등을 뽑는 대신 정직하게 보고.</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">10</div>
+</section>
+
+<!-- ===================== S11 · 완결성 + 정직 + 개념브릿지 ===================== -->
+<section class="slide">
+  <div class="topbar"><span class="tick"></span><b>Self-Development</b><span class="sep">|</span><span class="sub">끝까지 간 트랙 · 정직 · 강점</span></div>
+  <h1 class="title">End-to-End, Honestly</h1>
+  <div class="body" style="margin-top:14px;">
+    <div class="row grow">
+      <div class="col" style="flex:1.05">
+        <div class="card"><div class="ch">"끝까지 굴러간다" — 한 명령으로 재현</div>
+          <div class="pipe" style="margin:4px 0 2px;">
+            <div class="pbox"><div class="t" style="font-size:12px;">SFT</div></div><div class="arrow">→</div>
+            <div class="pbox"><div class="t" style="font-size:12px;">merge</div></div><div class="arrow">→</div>
+            <div class="pbox green"><div class="t" style="font-size:12px;">GGUF Q4_K_M</div></div><div class="arrow">→</div>
+            <div class="pbox green"><div class="t" style="font-size:12px;">llama.cpp</div></div><div class="arrow">→</div>
+            <div class="pbox cyan"><div class="t" style="font-size:12px;">Open WebUI</div></div>
+          </div>
+          <div class="note" style="margin-top:8px;">data→SFT→보상→GRPO→평가→GGUF 양자화→엣지 서빙→로컬 데모가 <b style="color:#fff">6GB에서 end-to-end로 실행</b> (<code>export_gguf.py</code> merge/convert/quantize/serve).</div>
+        </div>
+        <div class="warnbox" style="margin-top:4px;">
+          <b style="color:#fff">정직 (인터로이드 답):</b> "실서비스로 오래 굴러간 트랙이 제 약점입니다. 그래서 KoDialect를 데이터부터 평가·서빙까지 6GB에서 <b style="color:var(--green)">닫힌 루프로 완결</b>했습니다. 트래픽을 받는 배포 제품이라 과장하진 않습니다 — reproducible한 파이프라인 + 로컬 데모이고, '끝까지 가는 시스템'을 작게라도 직접 만든 첫 트랙입니다."</div>
+      </div>
+      <div class="col" style="flex:.95">
+        <div class="card grow" style="border-color:var(--green-dim);">
+          <div class="ch" style="text-align:center;margin-bottom:10px;">그럼에도 불구하고,</div>
+          <ul class="checks">
+            <li><b>측정 기반 의사결정</b> — reward hacking을 실측으로 발견·차단 (선언 아님)</li>
+            <li><b>풀스택 단독 + 끝까지</b> — data→서빙 6GB end-to-end</li>
+            <li><b>정직한 평가</b> — Pareto + Koehn으로 "단일 승자 없음" 정량화</li>
+            <li><b>지적 정직성</b> — 244 테스트 · 6-리뷰어 감사 · <b>인용 4건 자가 정정</b></li>
+          </ul>
+        </div>
+        <div class="insight">
+          <span class="tag">개념 브릿지</span>
+          <div class="t">면접에서 막힌 "<b style="color:#fff">CoT+RL이 왜 추론을 올리나</b>"(세이코어), "<b style="color:#fff">서빙은 왜 빠른가</b>"(SOOP)를, 이 프로젝트의 <span class="em">GRPO 실측 + GGUF 양자화 실측</span>이 원리 수준으로 답하게 한다. 막힌 질문 → 시그니처 강점.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">Project PT Presentation</div><div class="pageno">11</div>
+</section>
+
+</body>
+</html>

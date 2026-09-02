@@ -40,12 +40,12 @@ def get_prosody_marker(segment_intonations):
     pitches = [p for p in segment_intonations if p > 0]
     if not pitches:
         return ""
-    
+
     start, end = pitches[0], pitches[-1]
     delta = (end - start) / start * 100
 
     if delta > 15:
-        return "↗"   # 상승
+        return "↗"  # 상승
     elif delta < -15:
         return "↘"  # 하강
     elif max(pitches) - min(pitches) > 50:

@@ -13,8 +13,10 @@ description: >
 # grpo-troubleshooting
 
 Playbook for **Stage-3 GRPO** (`scripts/stage3_grpo.py`, `src/ko_dialect/training/grpo_trainer.py`)
-on the dev box: **RTX 2060 (Turing SM 7.5, 6 GB)**, conda env `balaenoptera`
+on the dev box: **RTX 2060 (Turing SM 7.5, 6 GB)**, uv-managed venv `./.venv`
 (trl 1.5.1, transformers 5.5.4, torch 2.11+cu130, unsloth 2026.6.1).
+The old conda env `balaenoptera` was removed 2026-08-04 — rebuild with
+`uv venv --python 3.11 .venv && make install-torch && make install && make install-unsloth`.
 
 **One command that bakes in every fix below:** `scripts/run_grpo.sh`
 (append Hydra overrides, e.g. `scripts/run_grpo.sh training.max_steps=200 logger=wandb`).
@@ -29,8 +31,8 @@ that makes *generation* fast and fits 6 GB, then worry about reward shaping.
 
 ### 1. Wrong interpreter / missing deps
 `ModuleNotFoundError: trl` (or torch). The system `python` is not the project env.
-→ Use `/home/jinmang2/miniconda3/envs/balaenoptera/bin/python` (has `ko_dialect`
-editable + trl + unsloth). `run_grpo.sh` hardcodes it; override with `PYTHON=...`.
+→ Use `./.venv/bin/python` (has `ko_dialect` editable + trl + unsloth).
+`run_grpo.sh` defaults to it and fails loudly if missing; override with `PYTHON=...`.
 
 ### 2. bitsandbytes: `OSError: libnvJitLink.so.13: cannot open shared object file`
 bnb 0.49 (pulled in by unsloth even for 16-bit) needs CUDA-13 `libnvJitLink.so.13`,

@@ -46,8 +46,8 @@ def r_copy_margin(prompts, completions, standard, dialect, direction=None, **kw)
     gold=dialect; flipped for dia2std.
 
     Cite: Fu et al. 2018, "Style Transfer in Text: Exploration and Evaluation"
-    (G2/H2 content-preservation vs. copy baseline); Hallinan et al. 2025, "Mind the
-    Style Gap" (arXiv:2502.15022), on copy-bias in style-transfer metrics.
+    (G2/H2 content-preservation vs. copy baseline); Pauli, Augenstein & Assent 2025,
+    "Mind the Style Gap" (arXiv:2502.15022), on copy-bias in style-transfer metrics.
     """
     texts = extract_texts(completions)
     rewards = []

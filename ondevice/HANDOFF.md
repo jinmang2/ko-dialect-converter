@@ -14,7 +14,8 @@ KoDialect `sft_merged` 0.5B → GGUF → **Galaxy S25 Ultra 실측**으로 BRIEF
 오프라인 테스트 `7 passed, 1 skipped`(=라이브 동치), ruff clean.
 
 ## 2. 재개 환경
-- 데스크탑 파이썬 env: **`balaenoptera`** (`~/miniconda3/envs/balaenoptera/bin/python`) — `datasets`/`sacrebleu`/`matplotlib`/`transformers`/`peft`/`fire` 보유.
+- 데스크탑 파이썬 env: **uv 관리 `./.venv`** (`$(pwd)/.venv/bin/python`). 구 conda env `balaenoptera`는 2026-08-04에 제거됨.
+  재생성: `uv venv --python 3.11 .venv && make install-torch && make install && make install-unsloth`.
 - 폰: Termux + llama.cpp(직접 빌드). llama.cpp 는 루트에 클론돼 있을 수 있음(`llama.cpp/`, gitignore).
 - CI 게이트: `ruff check` + `ruff format --check` (커밋 전 `ruff format .` 필수).
 
@@ -52,7 +53,7 @@ KoDialect `sft_merged` 0.5B → GGUF → **Galaxy S25 Ultra 실측**으로 BRIEF
 ## 7. 재개 첫 명령
 ```bash
 git checkout feat/ondevice-galaxy
-PY=~/miniconda3/envs/balaenoptera/bin/python
+PY=.venv/bin/python
 $PY -m pytest ondevice/tests/test_ondevice.py -q     # 7 passed, 1 skipped 확인
 cat ondevice/README.md                                # 액션플랜
 ```

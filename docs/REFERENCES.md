@@ -130,6 +130,196 @@ set aside; those are listed, not yet verified).
 - **Repo use:** prosody-marker SFT derives sentence-type tokens — `<UP>`=H%, `<DOWN>`=L%, `<WAVE>`=contour (via F0 CoV), `<KEEP>`=level. Verdict (memory `prosody-sft-ab-verdict`): raises recon_bleu significantly but is a *fidelity regularizer*, not a dialectness lever.
 - **Verification note:** ✅ Confirmed. Jun 2014 ("Intonational Phonology of Seoul Korean Revisited") updates AP counts but Jun 2000 remains correct for the IP boundary inventory.
 
+### A12. HyPoradise — LLM-based generative error correction (grounds the GER task)
+
+- **Title:** *HyPoradise: An Open Baseline for Generative Speech Recognition with Large Language Models*
+- **Authors / venue:** Chen Chen, Yuchen Hu, Chao-Han Huck Yang, Sabato Marco Siniscalchi, Pin-Yu Chen, Eng Siong Chng — **NeurIPS 2023, Datasets & Benchmarks Track** — **arXiv:2309.15701** — https://arxiv.org/abs/2309.15701
+- **Cited in:**
+  - `src/ko_dialect/data/dataset.py::build_ger_dataset` — that "ASR hypothesis → correct transcript" is an established task with LLMs, not an invention of this repo.
+  - `src/ko_dialect/data/template.py` (`stt2std` direction), `scripts/audit_ger_errors.py`.
+- **What the source says (verified from the arXiv abstract):**
+  - A dataset of **>334,000 pairs of N-best hypotheses and accurate transcriptions** across common speech domains.
+  - The framing is a *paradigm shift from LM rescoring*, which "can only select one candidate hypothesis as the output transcription"; generative correction can "correct those tokens that are missing in the N-best list".
+- **⚠️ Difference from our setup — do not overclaim.** HyPoradise conditions on an **N-best list**;
+  the AI-Hub corpus stores a **single 1-best Naver Clova hypothesis** per utterance
+  (`stt_hypothesis`). Our variant is therefore strictly *thinner* in input information than
+  the benchmark's, so HyPoradise's WER reductions are **not** a prediction of ours. It grounds
+  the task's existence and framing, nothing quantitative.
+- **Verification note:** ✅ Bibliographic details and the N-best claim confirmed against the arXiv abstract (2026-08-06). No quantitative claim from this paper is used in the repo.
+
+### A13. I-measure — scoring against a "do-nothing" baseline (grounds `gain_over_copy`)
+
+- **Title:** *Towards a standard evaluation method for grammatical error detection and correction*
+- **Authors / venue:** Mariano Felice, Ted Briscoe — **NAACL-HLT 2015**, pp. 578–587 — https://aclanthology.org/N15-1060/
+- **Cited in:**
+  - `src/ko_dialect/evaluation/metrics.py::compute_gain_over_copy` / `compute_copy_baseline`
+  - `src/ko_dialect/evaluation/metric_registry.py` (`gain_over_copy`, `copy_baseline`), `scripts/eval_dia2std.py`
+- **The problem it names:** F-score style metrics cannot distinguish a system that *does nothing*
+  from one that only makes wrong corrections — both score 0 — so there is no way to ask whether a
+  system improved on the input at all. This repo hit the same wall from the other side: measured
+  dia2std, raw chrF reads 76.9 on Gangwon and 75.4 on Chungcheong, which look respectable until
+  you notice the unchanged input already scores 76.8 and 79.9 (docs/CORPUS_ANALYSIS_5REGION.md §6).
+- **What the source says (verified from the authors' project page, https://ilexir.co.uk/i-measure/):**
+  > "The I-measure is positive if the text quality has improved, negative if it has deteriorated
+  > and zero if it remains the same, either because no change has been effected or because the
+  > positive impact of errors successfully corrected by the system is equal to the negative
+  > impact of new errors introduced."
+- **⚠️ We do not implement the I-measure.** It is a token-level three-way alignment (source /
+  hypothesis / reference) for GEC. `gain_over_copy` is a corpus-chrF difference,
+  `chrF(gen,gold) − chrF(source,gold)`. What is borrowed is the **principle** — score relative to
+  the unchanged input, with negative meaning "worse than doing nothing" — not the metric.
+- **Verification note:** ⚠️ **Partially verified.** Bibliography confirmed via ACL Anthology
+  (N15-1060) and the quoted semantics via the authors' own I-measure page. The primary PDF could
+  not be text-extracted in this environment, so no section- or table-level claim is made from it.
+
+### A14. Alphabet-level pivot NMT for Korean dialects — external support for the dia2std priority
+
+- **Title:** *Low-Resourced Alphabet-Level Pivot-Based Neural Machine Translation for Translating Korean Dialects*
+- **Venue:** *Applied Sciences* 15(17):9459 (2025) — https://doi.org/10.3390/app15179459
+- **Why it matters here:** it treats **dialect → standard normalization as the reusable component** —
+  a pivot whose output is then fed to an off-the-shelf translator or LLM. That is exactly the
+  direction this repo deploys (`dia2std`) and, until 2026-08-05, the one GRPO never optimised
+  (docs/CORPUS_ANALYSIS_5REGION.md §7). Independent support for the L4 reprioritisation.
+- **What the abstract claims:** a two-stage pivot; the normalizer is a **minGRU encoder + GRU
+  decoder seq2seq with alphabet-level (jamo) tokenization**, and jamo tokenization is reported
+  "more effective for Korean dialect normalization than other widely used sub-word tokenizations".
+- **⚠️ Not actionable for this repo, and do not cite it as if it were.** That result is for a small
+  seq2seq **trained from scratch**; we fine-tune a pretrained Qwen2.5-0.5B whose BPE vocabulary
+  cannot be swapped without discarding the pretraining that makes a 0.5B model viable at all. It is
+  a *hypothesis generator* for why Jeju degrades (dialect differences are often sub-syllabic, and
+  syllable-level BPE may fragment them), not a prescription.
+- **Verification note:** ⚠️ **Unverified against the primary source.** MDPI returns HTTP 403 to this
+  environment; the claims above come from the publisher's abstract via search. No quantitative
+  result from this paper is used anywhere in the repo.
+
+### A15. Prosodic labels in seq2seq synthesis — why the prosody-marker A/B came out flat
+
+- **Title:** *Prosodic Prominence and Boundaries in Sequence-to-Sequence Speech Synthesis*
+- **Authors / venue:** Antti Suni, Sofoklis Kakouros, Martti Vainio, Juraj Šimko — **Speech Prosody 2020** — **arXiv:2006.15967** — https://arxiv.org/abs/2006.15967
+- **Cited in:** `src/ko_dialect/data/prosody.py`, `docs/EXPERIMENTS.md` §2 (prosody-marker A/B verdict).
+- **What the source says (verified from the arXiv abstract):** augmenting text input with
+  automatically extracted **word-prominence and phrase-boundary labels** "significantly improves the
+  output in terms of faithfulness of f0 and energy contours"; the system still falls short on local
+  prosodic events needing longer-range semantics. The gains are **acoustic-prosodic realisation**.
+- **Why this is the right frame for our null result:** the measured verdict here (memory
+  `prosody-sft-ab-verdict`) was that sentence-level prosody markers **raise `recon_bleu`
+  significantly (+3.9 / +6.4, p<.001) while the dialectness axes stay flat** — i.e. a fidelity
+  regularizer, not a dialectness lever. That is what this literature predicts: prosody labels carry
+  boundary/prominence information, not lexical identity, and dialectness in our corpus is
+  overwhelmingly lexical (`하영→많이`, `경→그렇게`; docs/CORPUS_ANALYSIS_5REGION.md §10).
+  The flat result is the expected outcome, not a failed experiment.
+- **⚠️ Domain gap:** that paper conditions a TTS acoustic model; we prepend discrete markers to text
+  for a text-to-text LM. The shared claim is only about *what prosody labels carry*.
+- **Verification note:** ✅ Bibliography and the quoted claims confirmed against the arXiv abstract (2026-08-06).
+
+### A16. Round-trip RL for low-resource MT — the unused reward we already implement
+
+- **Title:** *Improving Low-Resource Machine Translation via Round-Trip Reinforcement Learning*
+- **Authors / venue:** Ahmed Attia, Alham Fikri Aji — **arXiv:2601.12535** (cs.CL, Jan 2026) — https://arxiv.org/abs/2601.12535
+- **What the source says (verified from the arXiv abstract):** self-supervised fine-tuning that
+  translates English → low-resource language → English and uses **chrF++ + BLEU on the
+  reconstructed English as the reward**. It **does not require reference translations**.
+  Evaluated on **NLLB 600M and 1.3B**; consistent improvements on Central Aymara, Friulian,
+  Wolof, Dyula, Bhojpuri, Russian. No numeric table is quoted here — the abstract gives none.
+- **Why it matters here:** this repo already implements the same idea as
+  `rewards/reconstruction.py::make_reconstruction_reward` (grounded in Dual-RL, §A6) and
+  registers it as `"reconstruction"` — **but no experiment arm uses it**; arms 1 and 2 run
+  style + copy_margin + edit_precision + edit_recall, with reconstruction and fluency parked on
+  VRAM cost. The 600M result is the closest external evidence that the axis is viable at our
+  0.5B scale.
+- **⚠️ Caveat specific to `dia2std`:** the back-translator for that arm would be
+  standard → dialect, a direction this model is *also* weak at (docs/CORPUS_ANALYSIS_5REGION.md
+  §6). A weak back-translator makes the reward noisy, so enable it on std2dia first or use a
+  fixed external back-translator.
+- **Verification note:** ✅ Bibliography and method confirmed against the arXiv abstract (2026-08-06).
+
+### A17. MT-R1-Zero — rule-metric mixed reward, GRPO for translation
+
+- **Title:** *MT-R1-Zero: Advancing LLM-based Machine Translation via R1-Zero-like Reinforcement Learning*
+- **Venue:** **arXiv:2504.10160** (2025) — https://arxiv.org/pdf/2504.10160
+- **What it reports:** R1-Zero-style RL for MT **without a supervised warm start**, using a
+  *rule-metric mixed reward* (format checks combined with translation-quality metrics) under
+  GRPO; the authors report that pure RL can rival SFT for LLM-based translation.
+- **Why it matters here:** our SFT budget is hardware-bound (≈3.5 h per arm on the 6 GB card
+  after the eval fix), so "RL without an SFT warm start" is a directly relevant alternative
+  shape for the pipeline. It also matches the direction this repo already leans: mixing a
+  cheap deterministic signal with a metric-based one.
+- **Verification note:** ⚠️ **Abstract-level only.** Read via search summary; not verified
+  against the PDF in this environment. No quantitative claim is used in the repo.
+
+### A18. RLVR — verifiable rewards over learned reward models
+
+- **What it is:** the 2025–2026 framing in which the reward comes from a **deterministic
+  verifier** rather than a learned reward model; GRPO is the optimiser most commonly paired
+  with it. Survey/collection: https://github.com/opendilab/awesome-RLVR
+- **Why it matters here — the concrete consequence:** this corpus ships a verifier.
+  `dialect_eojeol_map` is a per-word gold edit list covering **99.7% of trainable rows**
+  (docs/CORPUS_ANALYSIS_5REGION.md §3.2), so "did the output convert `하영`→`많이`" is an exact
+  string check, not a proxy. `r_edit_precision` / `r_edit_recall` already consume it. The
+  TextCNN style reward, by contrast, is a *learned* proxy this project has already measured as
+  hackable (reward ↑ while chrF ↓) and whose margin is thinnest exactly where it matters —
+  Chungcheong sits closest to standard (copy floor 79.9 chrF). Hence `style` is weighted down
+  to 0.25 in `configs/experiment/grpo_dia2std.yaml` in favour of the edit axes.
+- **⚠️ Not a paper citation.** RLVR is a paradigm label, not a single result; the repo makes no
+  claim attributable to any one RLVR paper.
+- **Verification note:** ⚠️ Paradigm-level context only, no quantitative claim.
+
+### A19. Pref-GRPO — group normalization amplifies tiny reward gaps into fake advantages
+
+- **Title:** *Pref-GRPO: Pairwise Preference Reward-based GRPO for Stable Text-to-Image Reinforcement Learning*
+- **Authors:** Yibin Wang, Zhimin Li, Yuhang Zang, Yujie Zhou, Jiazi Bu, Chunyu Wang, Qinglin Lu, Cheng Jin, Jiaqi Wang — **arXiv:2508.20751**
+- **What the source says (verified from the abstract):** with pointwise reward models,
+  "minimal score differences between images are **amplified after normalization**, creating
+  **illusory advantages** that drive the model to over-optimize for trivial gains, ultimately
+  destabilizing" generation. Their fix replaces score maximisation with pairwise **preference
+  fitting** (win rate) inside each group.
+- **Why it matters here:** it names the mechanism behind the low-headroom measurement in
+  docs/CORPUS_ANALYSIS_5REGION.md §12.1. 28.5% of our GRPO prompts have a gold within 1 eojeol
+  of the source, so every completion scores nearly the same — and `(r − mean)/std` with a tiny
+  `std` turns that noise into a large advantage. It is worse than wasted compute: it is a
+  reward-hacking vector. **And this repo runs MO-GRPO (A2), whose per-objective unit-variance
+  normalisation inside the group is exactly the amplifying operation.** Hence
+  `build_grpo_dataset(low_headroom_ratio=…)` is a stability measure, not an efficiency tweak.
+- **⚠️ Domain gap:** text-to-image with a pointwise reward model. The *mechanism* is
+  architecture-independent; their quantitative results are **not** claimed to transfer. Our
+  evidence is the §12.1 distribution, nothing more.
+- **Verification note:** ✅ Bibliography and quoted claims confirmed against the arXiv abstract (2026-08-06).
+
+### A20. Dialect-to-standard normalization is *character transduction*, not translation
+
+- **Title:** *Dialect-to-Standard Normalization: A Large-Scale Multilingual Evaluation*
+- **Authors / venue:** Olli Kuparinen, Aleksandra Miletić, Yves Scherrer — **Findings of EMNLP 2023** — https://aclanthology.org/2023.findings-emnlp.923/
+- **What the source says (verified from the abstract + ACL page):** it introduces
+  dialect-to-standard normalization — "mapping phonetic transcriptions from different dialects
+  to the orthographic norm of the standard variety" — as "**a distinct sentence-level character
+  transduction task**", evaluated across Finnish, Norwegian, Swiss German and Slovene. A
+  **character-level Transformer trained on sliding windows of three words** is best for Finnish,
+  Swiss German and Slovene; pre-trained **byT5** on full sentences wins for Norwegian.
+- **Why it matters here — this is the closest published framing of our deployed task.** Two
+  independent findings converge with A14: the winning granularity is **sub-word (character /
+  byte)**, and the winning context is **narrow (3 words)**, not whole sentences. Our setup is the
+  opposite on both axes — Qwen2.5 BPE over full sentences. That is a hypothesis for why Jeju
+  collapses, and an argument that the on-device normalizer does not have to be a general LLM.
+- **⚠️ Constraint, not a prescription:** the project is committed to a pretrained decoder LM for
+  GGUF export; swapping to a char-level or byte-level model discards the pretraining that makes
+  0.5B viable. Treat as a design alternative to evaluate, not a change to make.
+- **Verification note:** ✅ Confirmed against the ACL Anthology abstract (2026-08-06). No numeric result is used.
+
+### A21. LLM + morphological rules for dialect normalization without parallel data
+
+- **Title:** *Dialect Normalization using Large Language Models and Morphological Rules*
+- **Authors / venue:** Antonios Dimakis, John Pavlopoulos, Antonios Anastasopoulos — **Findings of ACL 2025** — https://aclanthology.org/2025.findings-acl.1215/
+- **What the source says (verified):** combines rule-based linguistically informed
+  transformations **and** few-shot LLM prompting, "does not require parallel data", applied to
+  **Greek dialects** on regional proverbs, with human evaluation and downstream experiments.
+- **Why it matters here — mostly as a contrast that reframes our position.** Its central
+  contribution is working *without* parallel data. We have **1,303,105 parallel train rows**
+  with per-word gold edit maps. On the axis this literature optimises for, we are not
+  low-resource at all; our scarcity is **compute** (6 GB) and **model capacity** (0.5B). Methods
+  designed to manufacture supervision (round-trip A16, no-parallel-data A21) therefore solve a
+  problem we do not have, and their transfer to us is weak by construction.
+- **Verification note:** ✅ Confirmed against the ACL Anthology page (2026-08-06). No numeric result is used.
+
 ---
 
 ## B. Techniques & options (grounded in code, often without an explicit citation)

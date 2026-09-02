@@ -58,6 +58,7 @@ Mark GPU tests with `@pytest.mark.gpu` and skip in CI:
 ```python
 # conftest.py
 import pytest, torch
+
 gpu = pytest.mark.skipif(not torch.cuda.is_available(), reason="GPU not available")
 ```
 
