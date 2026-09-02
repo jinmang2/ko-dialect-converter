@@ -39,4 +39,15 @@ deepspeed: null               # e.g. configs/training/deepspeed_zero2_offload.js
 dataloader_num_workers: 0
 seed: 42
 num_train_samples: 150000
-num_eval_samples: null
+# Spend `num_train_samples` equally across regions instead of proportionally. The corpus
+# is skewed against the regions that need help: Jeju is 8.4% of a proportional draw and
+# scores *below* the copy-the-input baseline, while Gyeongsang is 31% and already beats
+# it by +27 chrF (docs/CORPUS_ANALYSIS_5REGION.md). Off by default for reproducibility.
+balance_regions: false
+# Eval cost scales with the CORPUS, not with this config, so a default of `null`
+# (evaluate everything) silently explodes when the corpus grows. Measured 2026-08-05:
+# the 2-region valid set was 45,061 rows and one eval took 60 min; the 5-region set is
+# 183,406 rows and one eval took 172 min — at eval_steps=500 that is 25.7 h of eval
+# around 3.2 h of actual training, i.e. 89% of the wall clock. 2,000 rows costs ~4 min
+# and is ample for an eval_loss curve. Raise it deliberately for a final measurement.
+num_eval_samples: 2000

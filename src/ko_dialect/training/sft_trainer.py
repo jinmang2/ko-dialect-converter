@@ -56,6 +56,9 @@ class SFTConfig:
     dataloader_num_workers: int = 0
     seed: int = 42
     num_train_samples: int | None = None
+    # Spend the `num_train_samples` budget equally across regions rather than
+    # proportionally. Off by default so existing runs stay reproducible.
+    balance_regions: bool = False
     num_eval_samples: int | None = None
     report_to: list[str] = field(default_factory=list)
     eval_strategy: str = "epoch"  # "no" | "steps" | "epoch"
@@ -94,6 +97,42 @@ class SFTConfig:
             lora_target_modules=self.lora_target_modules,
             seed=self.seed,
         )
+
+
+# Measured 2026-08-05 on the 6 GB RTX 2060: eval_samples_per_second was 8.45–8.84 across
+# three evals of the 5-region valid set. Used only to turn an unbounded eval set into a
+# number of hours a human will actually read.
+EVAL_ROWS_PER_SECOND = 8.6
+
+
+def eval_budget_warning(
+    num_eval_samples: int | None,
+    eval_rows: int,
+    max_steps: int,
+    eval_steps: int,
+    rows_per_second: float = EVAL_ROWS_PER_SECOND,
+) -> str | None:
+    """Warn when evaluation, not training, will dominate the run. ``None`` when it won't.
+
+    This exists because the trap is invisible at the config level: ``num_eval_samples:
+    null`` means "evaluate everything", so the cost is set by whatever the corpus happens
+    to be. Growing the corpus from 2 regions to 5 grew the valid split 45,061 → 183,406
+    and one eval 60 min → 172 min; at ``eval_steps=500`` that turned a 3.2 h training run
+    into a 28.9 h one, with 89% of the wall clock spent evaluating. Nothing errored — the
+    run just looked slow.
+    """
+    if num_eval_samples or not eval_rows or eval_steps <= 0:
+        return None
+    n_evals = max(1, max_steps // eval_steps)
+    eval_hours = n_evals * eval_rows / rows_per_second / 3600
+    if eval_hours < 1.0:
+        return None
+    return (
+        f"num_eval_samples is unset, so every eval scores all {eval_rows:,} rows: "
+        f"~{n_evals} evals ≈ {eval_hours:.1f} h of evaluation alone. "
+        f"Set training.num_eval_samples (2000 costs ~{2000 / rows_per_second / 60:.0f} min "
+        f"per eval) or raise training.eval_steps."
+    )
 
 
 def load_model_and_tokenizer(cfg: SFTConfig):
