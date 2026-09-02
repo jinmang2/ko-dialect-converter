@@ -39,7 +39,12 @@ import torch
 from datasets import load_from_disk
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from ko_dialect.evaluation import evaluate_all, generate_batched, grpo_runs
+from ko_dialect.evaluation import (
+    TOKENIZER_MAX_LENGTH,
+    evaluate_all,
+    generate_batched,
+    grpo_runs,
+)
 from ko_dialect.models import TextCNNForSequenceClassification
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -102,7 +107,7 @@ def generate(model, tok, prompts, device, batch_size=16, max_new_tokens=64):
         device=device,
         batch_size=batch_size,
         max_new_tokens=max_new_tokens,
-        max_length=448,
+        max_length=TOKENIZER_MAX_LENGTH,
     )
 
 

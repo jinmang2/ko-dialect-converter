@@ -25,7 +25,7 @@ from sacrebleu.metrics import BLEU
 from transformers import AutoTokenizer
 
 from ko_dialect.data.prosody import strip_markers
-from ko_dialect.evaluation import grpo_runs
+from ko_dialect.evaluation import TOKENIZER_MAX_LENGTH, grpo_runs
 from ko_dialect.evaluation.generation import generate_batched
 from ko_dialect.evaluation.leaderboard import RunSpec, evaluate_run
 from ko_dialect.evaluation.metric_registry import header_label
@@ -50,7 +50,7 @@ def _make_generate_fn(device, *, strip: bool, batch_size=16, max_new_tokens=64):
             device=device,
             batch_size=batch_size,
             max_new_tokens=max_new_tokens,
-            max_length=448,
+            max_length=TOKENIZER_MAX_LENGTH,
             post=strip_markers if strip else None,
         )
 

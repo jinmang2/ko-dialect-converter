@@ -27,6 +27,7 @@ from pathlib import Path
 import fire
 
 from ko_dialect.data import ChatTemplate
+from ko_dialect.evaluation import TOKENIZER_MAX_LENGTH, load_eval_samples
 from ko_dialect.evaluation.leaderboard import RunSpec, discover_runs
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -45,21 +46,6 @@ def _resolve_specs(runs: str | None, base: str) -> list[RunSpec]:
         adapter = run if "/" in run else f"outputs/{run}"
         specs.append(RunSpec(Path(adapter).name, base, adapter))
     return specs
-
-
-def _load_samples(raw_dataset_path, split, target_do, direction, n):
-    from datasets import load_from_disk
-
-    ds = load_from_disk(raw_dataset_path)[split]
-    ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
-    if n and n < len(ds):
-        ds = ds.select(range(n))
-    rows = []
-    for s in ds:
-        source = s["standard"] if direction == "std2dia" else s["dialect"]
-        reference = s["dialect"] if direction == "std2dia" else s["standard"]
-        rows.append({"source": source, "reference": reference})
-    return rows
 
 
 class MultiAdapterTranslator:
@@ -105,7 +91,11 @@ class MultiAdapterTranslator:
     def _generate(self, prompts: list[str]) -> list[str]:
         torch = self.torch
         enc = self.tok(
-            prompts, return_tensors="pt", padding=True, truncation=True, max_length=448
+            prompts,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
+            max_length=TOKENIZER_MAX_LENGTH,
         ).to(self.device)
         with torch.no_grad():
             gen = self.model.generate(
@@ -152,7 +142,7 @@ def main(
     if text:
         rows = [{"source": text, "reference": None}]
     else:
-        rows = _load_samples(raw_dataset_path, split, target_do, direction, n)
+        rows = load_eval_samples(raw_dataset_path, split, target_do, direction, n)
     sources = [r["source"] for r in rows]
 
     translator = MultiAdapterTranslator(specs, base, max_new_tokens=max_new_tokens)

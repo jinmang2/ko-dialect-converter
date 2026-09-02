@@ -25,9 +25,39 @@ logger = logging.getLogger(__name__)
 # LoRA weights are architecture-compatible with the plain fp16 checkpoint we eval against.
 DEFAULT_BASE_MODEL = "Qwen/Qwen2.5-0.5B-Instruct"
 
+# prompt-side truncation length shared by eval/serve scripts
+TOKENIZER_MAX_LENGTH = 448
+
 
 class _Generator(Protocol):
     def generate(self, **kwargs: Any) -> Any: ...
+
+
+def load_eval_samples(
+    raw_dataset_path: str,
+    split: str,
+    target_do: str,
+    direction: str,
+    n: int,
+) -> list[dict]:
+    """Load held-out ``(source, reference)`` rows for one region/direction.
+
+    Filters to ``target_do`` non-identical pairs, optionally takes the first ``n``, and
+    maps each pair to ``{"source", "reference"}`` per ``direction`` (``std2dia`` translates
+    standard -> dialect; anything else dialect -> standard).
+    """
+    from datasets import load_from_disk
+
+    ds = load_from_disk(raw_dataset_path)[split]
+    ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
+    if n and n < len(ds):
+        ds = ds.select(range(n))
+    rows = []
+    for s in ds:
+        source = s["standard"] if direction == "std2dia" else s["dialect"]
+        reference = s["dialect"] if direction == "std2dia" else s["standard"]
+        rows.append({"source": source, "reference": reference})
+    return rows
 
 
 def resolve_eval_model(model_path: str) -> tuple[str, bool]:

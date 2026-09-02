@@ -33,7 +33,7 @@ import torch
 from datasets import load_from_disk
 from transformers import AutoTokenizer
 
-from ko_dialect.evaluation import grpo_runs
+from ko_dialect.evaluation import TOKENIZER_MAX_LENGTH, grpo_runs
 from ko_dialect.evaluation.generation import generate_batched
 from ko_dialect.evaluation.leaderboard import (
     DIALECTNESS_AXIS,
@@ -69,7 +69,7 @@ def _make_generate_fn(device, batch_size: int = 16, max_new_tokens: int = 64):
             device=device,
             batch_size=batch_size,
             max_new_tokens=max_new_tokens,
-            max_length=448,
+            max_length=TOKENIZER_MAX_LENGTH,
         )
 
     return generate_fn
