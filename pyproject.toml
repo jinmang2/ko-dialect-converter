@@ -8,8 +8,13 @@ version = "0.2.0"
 description = "Korean dialect ↔ standard Korean via QLoRA / GRPO fine-tuning"
 requires-python = ">=3.11"
 dependencies = [
-    # Core ML stack
-    # "torch>=2.2.0", # make install-torch
+    # Core ML stack.
+    # torch is PINNED and served from the CUDA-13 wheel index (see [tool.uv.sources]).
+    # 2.11.0+cu130 is the combination validated on this box: RTX 2060 / Turing SM 7.5,
+    # fp16-only. Do not float this — 2.13 resolves a different CUDA dep set, and the
+    # GRPO playbook's fixes are pinned to trl 1.5.1 + transformers 5.5.4 + torch 2.11.
+    "torch==2.11.0",
+    "torchvision",
     "transformers",
     "datasets",
     "accelerate",
@@ -58,7 +63,10 @@ track   = ["wandb>=0.18", "mlflow>=2.15.0"]   # logger=wandb | logger=mlflow
 datagen = ["openai>=1.50", "google-genai"]    # synthetic-data generation scripts
 serve   = ["open-webui", "ipywidgets"]         # serving UI / notebooks
 eval    = ["lm_eval>=0.4"]
-vllm    = ["vllm"]
+# NOTE: `vllm` is deliberately NOT an extra. `uv lock` resolves every extra, and the
+# PyPI sdist for this platform tries to compile against /usr/local/cuda/bin/nvcc, which
+# is absent here — that single extra made the whole lockfile unbuildable. vllm is
+# installed from git by `make install-vllm`, same as unsloth. Keep it out of the lock.
 speech  = ["faster-whisper>=1.0", "torchaudio", "soundfile"]   # src/ko_dialect/speech (ASR + audio F0)
 
 [tool.setuptools.packages.find]
@@ -90,3 +98,23 @@ addopts = "-v --tb=short"
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
+
+# --------------------------------------------------------------------------- #
+# uv project configuration
+# --------------------------------------------------------------------------- #
+# torch must come from PyTorch's CUDA-13 wheel index, not PyPI (PyPI's `torch` is the
+# CPU/cu12 build). `explicit = true` means this index is used ONLY for the packages
+# mapped to it below — everything else still resolves from PyPI.
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+
+[tool.uv]
+# unsloth ships a CUDA-specific wheel from git and is intentionally NOT a locked
+# dependency (`make install-unsloth`); keeping it out lets CPU-only CI resolve.
+default-groups = []

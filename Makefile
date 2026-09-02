@@ -1,49 +1,55 @@
-.PHONY: install-torch install install-llama install-eval install-wandb install-vllm install-all \
-        download-model check check-vllm
+.PHONY: venv install install-extras install-llama install-unsloth install-vllm \
+        lock upgrade download-model check check-vllm test lint fmt
 
 # ---------------------------------------------------------------------------
-# Install targets
+# Environment (uv project interface — pyproject.toml + uv.lock)
 # ---------------------------------------------------------------------------
+# The env lives at ./.venv and is reproduced from uv.lock, so another machine gets the
+# same resolution instead of whatever PyPI serves that day. torch is pinned to
+# 2.11.0+cu130 and sourced from the CUDA-13 wheel index via [tool.uv.sources].
+#
+#   fresh machine:  make venv && make install
+#
+# Three packages stay OUT of the lock on purpose:
+#   unsloth / vllm      — CUDA-specific git builds; `uv lock` cannot resolve them here
+#                         (vllm's sdist wants /usr/local/cuda/bin/nvcc)
+#   llama-cpp-python    — needs CMAKE_ARGS at build time, unexpressible in pyproject
+# Install those with the dedicated targets below, AFTER `make install`.
 
-# torch는 vLLM 설치 시 자동으로 따라옴 (cu130)
-# fresh 환경에서 vLLM 없이 torch만 필요하면: make install-torch
-install-torch:
-	uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+venv:
+	uv venv --python 3.11 .venv
 
+# Core + dev, exactly as locked. Also installs this package in editable mode.
 install:
-# 	uv pip install -e .
-	uv pip install -r pyproject.toml
+	uv sync --extra dev
 
-# llama-cpp-python requires CMAKE flag for CUDA — cannot be expressed in pyproject.toml
+# Optional extras: track (wandb/mlflow) | datagen | serve | eval | speech
+# e.g. make install-extras EXTRAS="--extra track --extra eval"
+install-extras:
+	uv sync --extra dev $(EXTRAS)
+
+lock:
+	uv lock
+
+# Re-resolve within the pyproject constraints (torch stays pinned).
+upgrade:
+	uv lock --upgrade
+
 install-llama:
 	CMAKE_ARGS="-DGGML_CUDA=on" uv pip install "llama-cpp-python[server]" --no-cache-dir
 
-install-eval:
-# 	uv pip install -e ".[eval]"
-	uv pip install -r pyproject.toml --extra eval
-
-install-wandb:
-# 	uv pip install -e ".[wandb]"
-	uv pip install -r pyproject.toml --extra wandb
+install-unsloth:
+#     wheel depends on the CUDA version — see https://github.com/unslothai/unsloth#installation
+#     unsloth_zoo is a hard runtime import but NOT declared by the git package:
+#     `import unsloth` raises "Please install unsloth_zoo" without it.
+	uv pip install "unsloth @ git+https://github.com/unslothai/unsloth.git"
+	uv pip install unsloth_zoo xformers
+	uv run python -c "import unsloth, torch; print('unsloth OK | torch', torch.__version__)"
 
 install-vllm:
-# 	RTX 2060 = SM 7.5: flash-attn v2 미지원 → TORCH_SDPA 백엔드 사용 (conda activate.d/env_vars.sh에 설정)
-# 	vLLM이 torch를 업그레이드할 수 있음 → 설치 후 make check로 trl/transformers/peft 호환성 재확인 필수
-# 	uv pip install vllm
-# 	RAM=$(free -m | awk '/^Mem:/{print int($2/1024)}'); CORES=$(nproc); JOBS=$((RAM/4>0?RAM/4:1)); BEST=$((CORES<JOBS?CORES:JOBS)); echo -e "\n💻 논리 코어: ${CORES}개\n🧠 가용 RAM: ${RAM}GB\n🚀 권장 MAX_JOBS=${BEST}\n"
-# 	git+https://github.com/vllm-project/vllm.git@v0.4.2
-# 	https://github.com/vllm-project/vllm.git@0a5cbf63
+#     RTX 2060 = SM 7.5: flash-attn v2 미지원 → TORCH_SDPA 백엔드 사용
+#     vLLM이 torch를 올릴 수 있음 → 설치 후 `make check`로 trl/transformers/peft 호환 재확인 필수
 	MAX_JOBS=3 VLLM_TARGET_DEVICE=cuda uv pip install git+https://github.com/vllm-project/vllm.git
-
-install-unsloth:
-#     unsloth: install separately — wheel depends on CUDA version
-#     see: https://github.com/unslothai/unsloth#installation
-#     curl -fsSL https://unsloth.ai/install.sh | sh
-#     irm https://unsloth.ai/install.ps1 | iex
-	uv pip install "unsloth @ git+https://github.com/unslothai/unsloth.git"
-	uv pip install xformers
-
-install-all: install install-llama install-eval install-wandb
 
 # ---------------------------------------------------------------------------
 # Model download
@@ -51,18 +57,27 @@ install-all: install install-llama install-eval install-wandb
 
 download-model:
 	mkdir -p models
-	huggingface-cli download google/gemma-3-1b-it-qat-q4_0-gguf \
+	uv run huggingface-cli download google/gemma-3-1b-it-qat-q4_0-gguf \
 		gemma-3-1b-it-qat-q4_0.gguf \
 		--local-dir models/
 
 # ---------------------------------------------------------------------------
-# Sanity checks
+# Sanity checks / QA  (uv run == the project venv, no activation needed)
 # ---------------------------------------------------------------------------
 
 check:
-	python -c "import torch; print('torch:', torch.__version__, '| CUDA:', torch.cuda.is_available(), '|', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
-	python -c "from llama_cpp import Llama; print('llama-cpp-python OK')"
-	python -c "import trl, peft, transformers, datasets; print('trl/peft/transformers/datasets OK')"
+	uv run python -c "import torch; print('torch:', torch.__version__, '| CUDA:', torch.cuda.is_available(), '|', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+	uv run python -c "import trl, peft, transformers, datasets; print('trl/peft/transformers/datasets OK')"
+	uv run python -c "import ko_dialect; print('ko_dialect OK')"
 
 check-vllm:
-	VLLM_ATTENTION_BACKEND=TORCH_SDPA python -c "import vllm; print('vllm OK')"
+	VLLM_ATTENTION_BACKEND=TORCH_SDPA uv run python -c "import vllm; print('vllm OK')"
+
+test:
+	uv run pytest tests/ -q -m "not gpu"
+
+lint:
+	uv run ruff check .
+
+fmt:
+	uv run ruff format .

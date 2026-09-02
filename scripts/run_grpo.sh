@@ -11,7 +11,13 @@ cd "$(dirname "$0")/.."
 
 # 1) Interpreter: the project env is the conda env that has ko_dialect + trl + unsloth.
 #    Override with PYTHON=... if your env differs.
-PYTHON="${PYTHON:-/home/jinmang2/miniconda3/envs/balaenoptera/bin/python}"
+# Project venv is uv-managed at ./.venv (the old conda env `balaenoptera` is gone).
+PYTHON="${PYTHON:-$(pwd)/.venv/bin/python}"
+if [[ ! -x "$PYTHON" ]]; then
+  echo "[run_grpo] no interpreter at $PYTHON — create it with:" >&2
+  echo "  make venv && make install && make install-unsloth" >&2
+  exit 1
+fi
 
 # 2) bitsandbytes fix: bnb 0.49 looks for libnvJitLink.so.13 (CUDA 13 / torch cu130) but
 #    it is not on the default loader path, so `import bitsandbytes` fails with

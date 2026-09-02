@@ -121,6 +121,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -177,3 +179,8 @@ outputs/
 .omx/
 # Generated results report (run: python scripts/report.py)
 docs/RESULTS.md
+.gstack/
+
+# Vendored llama.cpp clone (GGUF export / on-device work). Not ours to track, and
+# leaving it visible makes the documented `ruff format .` rewrite ~186 upstream files.
+llama.cpp/
