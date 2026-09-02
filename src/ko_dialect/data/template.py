@@ -17,7 +17,11 @@ DO_NAME: dict[str, str] = {
     "chungcheongdo": "충청도",
 }
 
-Direction = Literal["std2dia", "dia2std"]
+#: ``stt2std`` is the GER (generative error correction) direction: the source is a real
+#: ASR hypothesis (Naver Clova, stored per row as ``stt_hypothesis``), not a human
+#: transcript. It is the only direction whose input actually exists at inference time —
+#: for the other two the caller would have to already possess a gold dialect transcript.
+Direction = Literal["std2dia", "dia2std", "stt2std"]
 
 
 @dataclass
@@ -28,6 +32,8 @@ class ChatTemplate:
         do_name = DO_NAME.get(do, do)
         if direction == "std2dia":
             return f"다음 문장을 {do_name} 사투리로 바꿔줘:\n{source}"
+        if direction == "stt2std":
+            return f"다음 {do_name} 음성인식 결과를 표준어 문장으로 고쳐줘:\n{source}"
         return f"다음 {do_name} 사투리를 표준어로 바꿔줘:\n{source}"
 
     def format_messages(

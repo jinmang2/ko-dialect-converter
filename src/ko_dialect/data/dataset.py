@@ -143,6 +143,150 @@ def build_sft_dataset(
     return DatasetDict(result)
 
 
+def subsample_balanced_by_region(
+    dataset: Dataset,
+    total: int | None,
+    seed: int = 42,
+    region_column: str = "do",
+) -> Dataset:
+    """Draw an equal quota per region instead of a proportional (shuffled) sample.
+
+    A plain ``shuffle().select(n)`` preserves corpus proportions — and this corpus is
+    lopsided in the wrong direction. Jeju is the most distinct variety and the one the
+    model handles worst (it scores *below* the copy-the-input baseline), yet it supplies
+    only 8.4% of a 150k draw while Gyeongsang — the one region already learned well —
+    supplies 31%. Equalising the quota spends the budget where the model is weak.
+
+    Regions holding fewer rows than the quota contribute everything they have and the
+    shortfall is **not** redistributed: topping it up from the majority region would
+    quietly restore the imbalance this function exists to remove. So the result may be
+    smaller than ``total``.
+
+    With no ``total`` there is no budget to divide, so the dataset comes back untouched —
+    and loudly, because the caller asked for balancing and is not getting it. Silently
+    training on the proportional corpus while the config says ``balance_regions: true``
+    is the kind of no-op that gets mistaken for a null result.
+    """
+    if not total:
+        logger.warning(
+            "region balancing requested but num_train_samples is unset — there is no "
+            "budget to divide, so the dataset is used as-is (proportional, unbalanced)."
+        )
+        return dataset
+    if region_column not in dataset.column_names:
+        raise ValueError(
+            f"balance_regions needs a {region_column!r} column; got {dataset.column_names}"
+        )
+
+    by_region: dict[str, list[int]] = defaultdict(list)
+    for i, region in enumerate(dataset[region_column]):
+        by_region[region].append(i)
+
+    quota = total // len(by_region)
+    rng = random.Random(seed)
+    picked: list[int] = []
+    for region in sorted(by_region):
+        idx = by_region[region]
+        rng.shuffle(idx)
+        take = idx[:quota]
+        picked.extend(take)
+        logger.info(
+            "region balance: %-14s %7d available -> %6d taken (quota %d)",
+            region,
+            len(idx),
+            len(take),
+            quota,
+        )
+    rng.shuffle(picked)
+    logger.info("region-balanced subsample: %d rows from %d regions", len(picked), len(by_region))
+    return dataset.select(picked)
+
+
+def build_ger_dataset(
+    dataset: DatasetDict | Dataset,
+    tokenizer,
+    template: ChatTemplate | None = None,
+    output_mode: str = "text",
+    identity_ratio: float = 0.1,
+    seed: int = 42,
+) -> DatasetDict:
+    """Build the GER (ASR error correction) dataset: ``stt_hypothesis`` → ``standard``.
+
+    Separate from :func:`build_sft_dataset` on purpose. That builder drops rows where
+    ``standard == dialect``, which is right for dialect conversion (nothing to convert)
+    but wrong here: an ASR hypothesis can be wrong regardless of how dialectal the
+    speech was, so those rows — about 39% of the corpus — carry perfectly good GER
+    supervision. Sharing the loop would silently discard them.
+
+    ``identity_ratio`` caps, but does not eliminate, rows where the ASR was already
+    right (``stt == standard``). Dropping them all is tempting and wrong: it would
+    train the model that every input needs an edit, which is the same forced-edit bias
+    ``r_overcorrection`` exists to punish downstream. Keeping a slice teaches "leave it
+    alone" as a valid answer. Set to 0.0 to drop them, 1.0 to keep every one.
+
+    Requires the ``stt_hypothesis`` column, which only the v2 (139-x) corpora carry —
+    the v1 2020 corpora have no ASR field at all, so this raises rather than silently
+    producing an empty dataset.
+
+    Prior art: generative error correction with LLMs is an established task — HyPoradise
+    (Chen et al., NeurIPS 2023 D&B, arXiv:2309.15701). Note the input differs: that
+    benchmark conditions on an **N-best list**, while AI-Hub stores a single 1-best Clova
+    hypothesis, so our variant has strictly less information to work with and its WER
+    results do not transfer. See docs/REFERENCES.md A12.
+    """
+    if output_mode not in ("text", "structured"):
+        raise ValueError(f"output_mode must be 'text' or 'structured', got {output_mode!r}.")
+    if not 0.0 <= identity_ratio <= 1.0:
+        raise ValueError(f"identity_ratio must be in [0, 1], got {identity_ratio!r}.")
+    if template is None:
+        template = ChatTemplate()
+    if isinstance(dataset, Dataset):
+        dataset = DatasetDict({"train": dataset})
+
+    result: dict[str, Dataset] = {}
+    for split_name, split_ds in dataset.items():
+        if "stt_hypothesis" not in split_ds.column_names:
+            raise ValueError(
+                f"[{split_name}] has no 'stt_hypothesis' column — GER needs the v2 corpora "
+                "(data/aihub/v2_2022). The v1 2020 corpora carry no ASR hypothesis."
+            )
+        split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
+
+        rng = random.Random(seed)
+        rows: list[dict[str, Any]] = []
+        missing_stt = identity_seen = identity_kept = 0
+        for sample in split_ds:
+            stt = (sample.get("stt_hypothesis") or "").strip()
+            standard = (sample["standard"] or "").strip()
+            if not stt or not standard:
+                missing_stt += 1
+                continue
+            if stt == standard:
+                identity_seen += 1
+                if rng.random() >= identity_ratio:
+                    continue
+                identity_kept += 1
+
+            do = sample["do"]
+            if output_mode == "structured":
+                rows.append({"source": stt, "target": standard, "do": do, "direction": "stt2std"})
+            else:
+                text = template.apply(tokenizer, stt, standard, do, "stt2std")
+                rows.append({"text": text, "do": do, "direction": "stt2std"})
+
+        result[split_name] = Dataset.from_list(rows)
+        logger.info(
+            "[%s] %d GER examples (dropped %d without stt; identity %d seen / %d kept)",
+            split_name,
+            len(rows),
+            missing_stt,
+            identity_seen,
+            identity_kept,
+        )
+
+    return DatasetDict(result)
+
+
 def prosody_marker_coverage(
     dataset: DatasetDict | Dataset,
     filter_identical: bool = True,
@@ -170,16 +314,61 @@ def prosody_marker_coverage(
     return coverage
 
 
+def _cap_share(n_high: int, n_low: int, ratio: float) -> int:
+    """How many low-headroom rows may stay so they are at most ``ratio`` of the total.
+
+    Solves ``keep = ratio * (n_high + keep)``. ``ratio >= 1`` keeps everything (the cap is
+    vacuous), ``0`` keeps none, and the result never exceeds what is available.
+    """
+    if not 0.0 <= ratio <= 1.0:
+        raise ValueError(f"low_headroom_ratio must be in [0, 1], got {ratio!r}.")
+    if ratio >= 1.0:
+        return n_low
+    return min(n_low, int(round(ratio * n_high / (1.0 - ratio))))
+
+
+def eojeol_edit_count(a: str, b: str) -> int:
+    """How many eojeols separate two sentences, by difflib alignment.
+
+    Symmetric, so it does not depend on translation direction. Used to measure a GRPO
+    prompt's *headroom*: how much the gold can differ from the source at all.
+    """
+    from difflib import SequenceMatcher
+
+    x, y = a.split(), b.split()
+    return sum(
+        max(i2 - i1, j2 - j1)
+        for tag, i1, i2, j1, j2 in SequenceMatcher(None, x, y).get_opcodes()
+        if tag != "equal"
+    )
+
+
 def build_grpo_dataset(
     dataset: DatasetDict | Dataset,
     tokenizer,
     template: ChatTemplate | None = None,
     direction: Direction = "std2dia",
     filter_identical: bool = True,
+    low_headroom_ratio: float | None = None,
+    low_headroom_max_edits: int = 1,
+    seed: int = 42,
 ) -> DatasetDict:
     """Build prompt-only dataset for GRPO training.
 
     Columns: ``prompt``, ``do``, ``standard``, ``dialect``, ``dialect_eojeol_map``.
+
+    ``low_headroom_ratio`` caps the share of prompts whose gold differs from the source by
+    at most ``low_headroom_max_edits`` eojeols. Measured on the 5-region build, **28.5% of
+    prompts differ by ≤1 eojeol** (Chungcheong 39.8%, Jeju 10.3%). GRPO scores a *group* of
+    completions per prompt and normalises by the group's spread, so when every completion
+    is forced to look nearly the same the advantage variance collapses toward zero: the
+    prompt costs ``num_generations`` forward passes and returns almost no gradient.
+
+    These prompts are **capped, not removed**. They are what teaches "leave it alone",
+    and dropping them entirely invites the over-correction failure ``r_overcorrection``
+    exists to punish — the same trade-off as ``identity_ratio`` in
+    :func:`build_ger_dataset`. ``None`` (default) keeps every prompt, so existing runs are
+    unchanged.
     """
     if template is None:
         template = ChatTemplate()
@@ -195,20 +384,44 @@ def build_grpo_dataset(
         split_ds = split_ds.filter(lambda x: x["do"] in SUPPORTED_DO)
 
         rows: list[dict[str, Any]] = []
+        low_headroom: list[dict[str, Any]] = []
         for sample in split_ds:
             do = sample["do"]
             source = sample["standard"] if direction == "std2dia" else sample["dialect"]
             prompt = template.build_prompt(tokenizer, source, do, direction)
-            rows.append(
-                {
-                    "prompt": prompt,
-                    "do": do,
-                    "direction": direction,
-                    "standard": sample["standard"],
-                    "dialect": sample["dialect"],
-                    "dialect_eojeol_map": sample.get("dialect_eojeol_map", []),
-                }
+            row = {
+                "prompt": prompt,
+                "do": do,
+                "direction": direction,
+                "standard": sample["standard"],
+                "dialect": sample["dialect"],
+                "dialect_eojeol_map": sample.get("dialect_eojeol_map", []),
+            }
+            if (
+                low_headroom_ratio is not None
+                and eojeol_edit_count(sample["standard"], sample["dialect"])
+                <= low_headroom_max_edits
+            ):
+                low_headroom.append(row)
+            else:
+                rows.append(row)
+
+        if low_headroom_ratio is not None:
+            keep = _cap_share(len(rows), len(low_headroom), low_headroom_ratio)
+            rng = random.Random(seed)
+            rng.shuffle(low_headroom)
+            # Never a silent cap: say what was dropped and why it was not dropped entirely.
+            logger.info(
+                "[%s] low-headroom (<=%d eojeol) prompts: %d found, %d kept "
+                "(target share %.0f%% of the split)",
+                split_name,
+                low_headroom_max_edits,
+                len(low_headroom),
+                keep,
+                low_headroom_ratio * 100,
             )
+            rows.extend(low_headroom[:keep])
+            rng.shuffle(rows)
 
         result[split_name] = Dataset.from_list(rows)
         logger.info("[%s] %d GRPO prompt examples", split_name, len(rows))

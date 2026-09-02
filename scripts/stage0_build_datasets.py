@@ -59,12 +59,29 @@ def main(
     cls_drop_collisions: bool = True,
     cls_max_per_label: int | None = None,
     cls_standard_cap_ratio: float | None = None,
+    build_ger: bool = False,
+    ger_identity_ratio: float = 0.1,
+    grpo_direction: str = "std2dia",
+    grpo_low_headroom_ratio: float | None = None,
     seed: int = 42,
 ) -> None:
     """
     Args:
         raw_dataset_path: Path to dialect Arrow dataset saved by scripts/prepare_data.py.
-        output_dir: Where to write the three output datasets (sft / grpo / classifier).
+        output_dir: Where to write the output datasets (sft / grpo / classifier, plus
+            ger when ``build_ger``).
+        build_ger: Also build the ASR-error-correction set (``stt_hypothesis`` →
+            ``standard``) into ``<output_dir>/ger``. Requires a v2 corpus; the v1 2020
+            trees have no ASR field.
+        ger_identity_ratio: Fraction of already-correct ASR rows to keep, so the model
+            learns "no edit needed" as a valid answer instead of a forced-edit habit.
+        grpo_direction: "std2dia" (historical default) or "dia2std" (the direction the
+            on-device product actually ships). Non-default values write to
+            ``<output_dir>/grpo_<direction>`` so both arms can coexist.
+        grpo_low_headroom_ratio: Cap the share of GRPO prompts whose gold differs from the
+            source by <=1 eojeol. 28.5% of the 5-region prompts are like that, and they
+            return almost no advantage variance for a full `num_generations` of compute.
+            None (default) keeps all of them.
         model_name: Tokenizer to use for chat-template formatting.
         both_directions: Whether to generate both std→dia and dia→std SFT examples.
         template_name: Registered chat template (see data/template.py).
@@ -147,10 +164,23 @@ def main(
     )
     logger.info("SFT saved: %s", sft_ds)
 
-    logger.info("Building GRPO prompt dataset ...")
-    grpo_ds = dialect_data.build_grpo_dataset(dataset, tokenizer, template, direction="std2dia")
-    grpo_ds.save_to_disk(str(out / "grpo"))
-    logger.info("GRPO saved: %s", grpo_ds)
+    # The deployed task is dia2std (ondevice/eval/make_eval_prompts.py), but every GRPO run
+    # and every leaderboard so far has optimised std2dia — the reverse. The reward stack
+    # already handles either direction per row, so this only needed exposing.
+    # Non-default directions get their own output dir so the two arms cannot overwrite
+    # each other, and so a stale `grpo/` is never silently reused for the other arm.
+    grpo_out = out / ("grpo" if grpo_direction == "std2dia" else f"grpo_{grpo_direction}")
+    logger.info("Building GRPO prompt dataset (direction=%s) ...", grpo_direction)
+    grpo_ds = dialect_data.build_grpo_dataset(
+        dataset,
+        tokenizer,
+        template,
+        direction=grpo_direction,
+        low_headroom_ratio=grpo_low_headroom_ratio,
+        seed=seed,
+    )
+    grpo_ds.save_to_disk(str(grpo_out))
+    logger.info("GRPO saved to %s: %s", grpo_out, grpo_ds)
 
     logger.info("Building classifier dataset ...")
     cls_ds = dialect_data.build_classification_dataset(
@@ -165,6 +195,20 @@ def main(
     )
     cls_ds.save_to_disk(str(out / "classifier"))
     logger.info("Classifier saved: %s", cls_ds)
+
+    if build_ger:
+        # Opt-in: needs `stt_hypothesis`, which only the v2 (139-x) corpora carry.
+        logger.info("Building GER (stt→standard) dataset ...")
+        ger_ds = dialect_data.build_ger_dataset(
+            dataset,
+            tokenizer,
+            template,
+            output_mode=output_mode,
+            identity_ratio=ger_identity_ratio,
+            seed=seed,
+        )
+        ger_ds.save_to_disk(str(out / "ger"))
+        logger.info("GER saved: %s", ger_ds)
 
 
 if __name__ == "__main__":

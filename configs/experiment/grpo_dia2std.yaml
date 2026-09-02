@@ -1,0 +1,65 @@
+# @package _global_
+# Arm D: MO-GRPO on the DEPLOYED direction (dialect → standard).
+#
+# Why this arm exists. `ondevice/eval/make_eval_prompts.py` sets DIRECTION = "dia2std"
+# ("방언 → 표준어", the offline voice-command normaliser this project ships). Every GRPO
+# run before this one trained `std2dia`, and every leaderboard and checkpoint selection
+# filtered to `direction == "std2dia"` — the reverse of what is deployed. SFT covers both
+# directions, so the shipped model can do dia2std, but that ability has never been
+# refined by RL or used to pick a checkpoint.
+#
+# Measured on held-out speaker-disjoint data (docs/CORPUS_ANALYSIS_5REGION.md §6), the
+# deployed direction is where the model is weakest: against the copy-the-input baseline
+# it gains +27.2 chrF on Gyeongsang but only +0.07 on Gangwon, and it is *negative* on
+# Chungcheong (−4.6) and Jeju (−1.1). Three of five regions are at or below "do nothing".
+#
+# Prerequisite — build the prompts for this direction first (they do not exist yet):
+#   python scripts/stage0_build_datasets.py --raw_dataset_path outputs/dialect_raw_new \
+#       --grpo_direction dia2std --grpo_low_headroom_ratio 0.15
+#                                         # → outputs/datasets/grpo_dia2std
+#
+# The headroom cap is not cosmetic. 28.5% of the 5-region prompts have a gold that differs
+# from the source by <=1 eojeol (Chungcheong 39.8%, Jeju 10.3%; <=2 eojeol is 48.1%
+# overall). GRPO normalises rewards within a per-prompt group, so those prompts return
+# near-zero advantage variance while still costing num_generations forward passes each.
+# 0.15 keeps enough of them to teach "leave it alone" — deleting them outright invites the
+# over-correction failure r_overcorrection exists to punish.
+#
+# Run:
+#   scripts/run_grpo.sh experiment=grpo_dia2std \
+#       data.grpo_dataset_path=outputs/datasets/grpo_dia2std
+#
+# Judge with scripts/eval_dia2std.py (gain_over_copy), NOT eval_leaderboard.py — that
+# one filters to std2dia and would score this arm on the direction it did not train.
+defaults:
+  - override /logger: wandb
+
+experiment:
+  name: ko-dialect-grpo
+  run_name: grpo-dia2std-mo_grpo
+
+training:
+  # Same aggregation as Arm1/Arm2 so the only deliberate change is the direction.
+  aggregation: mo_grpo
+  beta: 0.1
+  num_train_epochs: 1
+  # 6GB-safe: the proven-fit config (num_gen=4 / bs=4 / accum=4, global batch 16).
+  num_generations: 4
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
+  # Reward axes. Every reward in this repo already reads the per-row `direction` column
+  # and swaps gold/source accordingly (content.py, edit.py, reconstruction.py), and
+  # r_style negates itself for dia2std — so the axes below need no dia2std-specific code.
+  #
+  # r_style is weighted LOWER here than in Arm1 (0.5 → 0.25) on purpose. For dia2std the
+  # style target is `standard`, i.e. the reward pushes the output *away* from the dialect
+  # class. That is the axis the classifier is weakest on precisely where it matters:
+  # Chungcheong's copy floor is 79.9 chrF, meaning its dialect text already looks close
+  # to standard, so p(chungcheongdo) − p(standard) is a low-margin, noisy signal there.
+  # Leaning on copy_margin + edit keeps the pressure on measurable transformation.
+  rewards:
+    - {name: style, weight: 0.25}
+    - {name: copy_margin, weight: 1.0}
+    - {name: edit_precision, weight: 0.5}
+    - {name: edit_recall, weight: 0.5}
+  normalize_rewards: true
