@@ -168,16 +168,41 @@ on-device validity gate는 이걸 잡지 못한다. 게이트는 "폰 채점 == 
 
 ---
 
-## 5. 미결 결정사항
+## 5. 결정 결과 — 둘 다 "병기"
 
-두 건 모두 고치는 순간 기존에 보고된 수치가 무효가 되므로, 재실행 계획과 함께 결정해야 한다.
+두 건 모두 **어느 한 수치를 다른 것으로 갈아치우지 않고, 둘 다 재서 격차를 드러내는 쪽**으로
+정했다. 기존 발표 수치가 조용히 재정의되지 않으면서, 각 편향의 크기가 표에 보인다.
 
-| # | 항목 | 선택지 |
+### D1 — 평가셋 선택: `head` + `stratified` 병기 ✅ 구현됨
+
+`scripts/eval_leaderboard.py --eval_strategies head,stratified` (기본값). 리더보드가 두 슬라이스로
+각각 전 arm을 평가하고, **EVAL-SET SELECTION GAP** 표에 랭킹 지표를 나란히 + Δ 컬럼으로 찍는다.
+
+Δ를 읽는 법이 핵심이다. Δ가 모든 run에서 **일정하면** 슬라이스 선택이 점수의 수준만 옮긴 것이라
+순위는 안전하다. Δ가 **run마다 다르면** 슬라이스 선택이 순위 자체를 뒤집을 수 있었다는 뜻이다.
+
+JSON 기록은 `by_strategy`가 추가되고 schema가 `leaderboard_multi/v2`로 올라간다. 최상위에는
+primary(첫 전략)를 그대로 유지해 v1 리더가 계속 동작한다.
+
+### D2 — 역방향 프롬프트: plain + chatml 병기, 랭킹은 chatml ✅ 구현됨
+
+| 지표 | 프롬프트 | 역할 |
 |---|---|---|
-| D1 | 평가셋 선택 기본값 | (a) `head` 유지 + 신규 실험만 `stratified` (b) `stratified`로 전환 + 전 arm 재실행 (c) 두 수치 병기 |
-| D2 | 역방향 프롬프트 | (a) 현행 유지 (기존 수치와의 연속성) (b) `template.py` SSOT 사용 + 재실행 (c) 두 포맷 모두 측정해 포맷 민감도를 지표로 보고 |
+| `reconstruction_bleu` | 평문 `REVERSE_PROMPT` | 기존 수치와의 연속성 유지 |
+| `reconstruction_bleu_chatml` | `template.py` SSOT (ChatML+system+지역) | **랭킹 기준** |
+| `format_sensitivity` | chatml − plain | 학습 포맷에서 얻는 BLEU. 0 = 포맷 견고. **낮을수록 좋음**, monitoring 전용 |
 
-D2 (c)는 부수적으로 흥미로운 결과를 준다 — 포맷 민감도 자체가 소형 모델의 견고성 지표다.
+`DEFAULT_SELECT_BY`·`FIDELITY_AXIS`·paired significance가 모두 chatml 기준으로 옮겨졌다.
+`format_sensitivity`를 선택 목표로 쓰면 안 된다 — 두 포맷에서 **똑같이 나쁜** 모델이 0점으로
+"이기기" 때문이다.
+
+비용: run마다, 슬라이스마다 생성 패스 1회 추가.
+
+### 아직 안 된 것 (중요)
+
+구현과 단위 테스트는 끝났지만 **실제 수치는 아직 없다.** 이 PC에는 `outputs/grpo*` 어댑터도
+`outputs/classifier_clean`도 없어서 리더보드를 끝까지 돌릴 수 없다. 실제 head-vs-stratified,
+plain-vs-chatml 수치는 GRPO arm과 분류기가 있는 머신에서 GPU 실행이 필요하다.
 
 ## 6. 후속 연구 후보 (근거 있는 것만)
 

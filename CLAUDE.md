@@ -87,11 +87,13 @@ Regenerate with `uv run python scripts/analyze_data.py all`. Load-bearing findin
 - **Transfer is small and length-preserving** — usable pairs change 25–33% of eojeol, and
   24–29% differ by a single eojeol. This is the data-side case for `copy_margin`.
 - **first-n eval selection skews easy, by a different amount per region** (TVD 46.9%
-  gangwon vs 15.2% gyeongsang). `load_eval_samples(..., strategy="stratified")` fixes it
-  deterministically (TVD → 0.2%); the default stays `head` pending a re-run decision.
-- **`reconstruction_bleu` (the ranking metric) is measured off-template** — `REVERSE_PROMPT`
-  is plain text with no ChatML, system prompt, or region, unlike everything the model saw
-  in training. Open decision, see DATA_ANALYSIS.md §5.
+  gangwon vs 15.2% gyeongsang). The leaderboard now evaluates both slices
+  (`--eval_strategies head,stratified`, both on by default) and prints an EVAL-SET
+  SELECTION GAP table; a Δ that varies across runs means the slice could reorder them.
+- **The reverse pass runs under both prompt formats.** `reconstruction_bleu` (plain
+  `REVERSE_PROMPT`, kept for continuity), `reconstruction_bleu_chatml` (the `template.py`
+  format training used — this is the ranking metric), and `format_sensitivity`
+  (chatml − plain; lower is better, monitoring only — a uniformly bad model scores 0).
 - `speech_kind` / `intent` / `emotion` are populated and read by nothing;
   `dialect_eojeol_map` is 43.2% empty, so `eojeol_accuracy` covers ~57% of rows.
 
