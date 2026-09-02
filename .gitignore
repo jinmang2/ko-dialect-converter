@@ -177,3 +177,10 @@ outputs/
 .omx/
 # Generated results report (run: python scripts/report.py)
 docs/RESULTS.md
+
+# Record of the pre-uv conda env (referenced from pyproject.toml); the env itself is
+# gone, so this freeze is the only remaining evidence of what it resolved to.
+!docs/env_snapshot/*.txt
+
+# Vendored llama.cpp clone (GGUF convert/quantize binaries) — build locally, never commit
+llama.cpp/

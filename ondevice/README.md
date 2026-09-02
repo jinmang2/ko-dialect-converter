@@ -21,7 +21,7 @@ ondevice/
   data/eval_prompts.jsonl  # 강원·경상 고정 평가셋 (make_eval_prompts 가 생성)
 ```
 
-데스크탑 스크립트는 repo의 conda 환경(예: `balaenoptera`)에서 실행
+데스크탑 스크립트는 repo의 uv 환경(`.venv`, `uv sync --extra dev`)에서 실행
 (`datasets`/`sacrebleu`/`matplotlib` 필요). 폰 스크립트는 Termux + llama.cpp.
 
 ---
@@ -43,11 +43,10 @@ ondevice/
 
 ```bash
 # (오프라인, 지금 통과) 입력 패리티·결정성·hash 재현성
-PY=~/miniconda3/envs/balaenoptera/bin/python
-$PY -m pytest ondevice/tests/test_ondevice.py -q       # 7 passed, 1 skipped(=live)
+uv run pytest ondevice/tests/test_ondevice.py -q       # 7 passed, 1 skipped(=live)
 # (라이브, 두 서버 떠 있을 때) 출력 token-id 동치 — 같은 gguf 를 데스크탑/폰에 각각 serve
 ONDEVICE_DESKTOP_EP=http://127.0.0.1:8081 ONDEVICE_PHONE_EP=http://127.0.0.1:8080 \
-  $PY -m pytest ondevice/tests/test_ondevice.py::test_token_equivalence_desktop_vs_phone_live -q
+  uv run pytest ondevice/tests/test_ondevice.py::test_token_equivalence_desktop_vs_phone_live -q
 # 또는 스크립트로: python ondevice/eval/check_token_equivalence.py \
 #   --desktop http://127.0.0.1:8081 --phone http://127.0.0.1:8080 --k 5
 ```
@@ -55,7 +54,6 @@ ONDEVICE_DESKTOP_EP=http://127.0.0.1:8081 ONDEVICE_PHONE_EP=http://127.0.0.1:808
 
 ### 0단계 · 데스크탑: 모델 변형 만들기 (~10분, GPU 불요)
 ```bash
-conda activate balaenoptera
 # llama.cpp 가 없으면: git clone https://github.com/ggml-org/llama.cpp && (cd llama.cpp && cmake -B build && cmake --build build -j)
 python ondevice/quantize/sweep.py --merged outputs/sft_merged \
     --variants Q8_0,Q5_K_M,Q4_K_M,Q4_K_S --out_dir ondevice/models

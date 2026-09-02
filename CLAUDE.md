@@ -27,22 +27,25 @@ Never set `bf16=True` in TrainingArguments — use `fp16=True`.
 ## Key Commands
 
 ```bash
-# Setup (dev) — after refactoring is complete
-pip install -e ".[dev]"
-pre-commit install
+# Setup — uv owns the environment (.venv from pyproject.toml + uv.lock). No conda.
+uv sync --extra dev              # everyday dev env      (= make install)
+uv sync --extra dev --extra gpu  # + unsloth/xformers    (= make install-gpu)
+uv run pre-commit install
+# Run anything in the env with `uv run <cmd>` (or activate .venv). `make install-vllm`
+# adds vLLM from its pinned git rev; `make install-webui` installs open-webui isolated.
 
 # Lint / format (works now) — ruff is the single tool (replaces black + isort)
-ruff check . --fix     # lint + import order
-ruff format .          # style (line length 100)
+uv run ruff check . --fix     # lint + import order
+uv run ruff format .          # style (line length 100)
 
 # Tests (no GPU needed) — after test suite is added
-pytest tests/ -x -q -m "not gpu"
+uv run pytest tests/ -x -q -m "not gpu"
 
 # Stage-3 GRPO (RTX 2060). Wrapper sets the bnb LD_LIBRARY_PATH + env and runs stage3
 # with 2060-safe defaults (unsloth 16-bit LoRA, sft_merged + classifier_clean wired in).
 scripts/run_grpo.sh training.max_steps=200 logger=wandb   # extra args = Hydra overrides
 # Fast iteration / debugging (tiny slice, ~1 min): SMOKE_4BIT=0 SMOKE_N=64 SMOKE_STEPS=5
-python scripts/smoke_grpo.py
+uv run python scripts/smoke_grpo.py
 # When GRPO won't run / OOMs / reward-hacks → .claude/skills/grpo-troubleshooting/SKILL.md
 
 # Evaluation & serving (after a run completes)
@@ -51,27 +54,27 @@ python scripts/smoke_grpo.py
 # copy_margin is HIGHER-is-better) + a glossary. Reports a Pareto frontier over
 # (copy_margin↑ × reconstruction_bleu↑), DFS (DIA-REFINE arXiv:2511.06680), and paired-
 # bootstrap significance vs SFT (Koehn 2004). PER-REGION + weighted OVERALL aggregate.
-python scripts/eval_leaderboard.py --target_do gangwondo --n 150          # one region
-python scripts/eval_leaderboard.py --target_do gangwondo,gyeongsangdo     # several + OVERALL
-python scripts/eval_leaderboard.py --all_regions --n 150                  # every region in data
+uv run python scripts/eval_leaderboard.py --target_do gangwondo --n 150          # one region
+uv run python scripts/eval_leaderboard.py --target_do gangwondo,gyeongsangdo     # several + OVERALL
+uv run python scripts/eval_leaderboard.py --all_regions --n 150                  # every region in data
 # (jeju/jeolla/chungcheong appear automatically once their data + classifier labels land)
 # Multi-model serving: ONE base (sft_merged) in VRAM, hot-swap adapters per request —
 # compare SFT / arm1 / arm2 side by side without committing to one (6GB-safe):
-python scripts/serve_compare.py --text "밥 먹었니?" --target_do gangwondo
-python scripts/serve_compare.py --runs "grpo_arm1 grpo_arm2" --n 10 --target_do gangwondo
+uv run python scripts/serve_compare.py --text "밥 먹었니?" --target_do gangwondo
+uv run python scripts/serve_compare.py --runs "grpo_arm1 grpo_arm2" --n 10 --target_do gangwondo
 # Publish a chosen model to HF Hub with an evidence-rich card (metrics+Pareto+significance).
 # --dry_run (default) writes README.md locally; --dry_run False uploads (needs HF_TOKEN):
-python scripts/push_to_hub.py --model_path outputs/grpo_arm2_merged \
+uv run python scripts/push_to_hub.py --model_path outputs/grpo_arm2_merged \
     --repo_id <you>/ko-dialect-arm2 --run_tag grpo_arm2 \
     --leaderboard 'outputs/eval_logs/leaderboard_overall_*.json'
 # Single-run SFT-vs-one-GRPO deep dive (stratified buckets + qualitative samples):
-python scripts/compare_sft_grpo.py --grpo_dir outputs/grpo_arm1 --target_do gangwondo
+uv run python scripts/compare_sft_grpo.py --grpo_dir outputs/grpo_arm1 --target_do gangwondo
 # Checkpoint sweep WITHIN one run (find the over-optimisation point):
-python scripts/eval_grpo_checkpoints.py --grpo_dir outputs/grpo_arm1 --n 150
+uv run python scripts/eval_grpo_checkpoints.py --grpo_dir outputs/grpo_arm1 --n 150
 # Latency/throughput bench for one merged model (p50/p95, tok/s + chrF/copy_margin):
-python scripts/merge_sft_lora.py --adapter_path outputs/grpo_arm1 \
+uv run python scripts/merge_sft_lora.py --adapter_path outputs/grpo_arm1 \
     --base_model outputs/sft_merged --out outputs/grpo_arm1_merged
-python scripts/bench_serving.py --model_path outputs/grpo_arm1_merged --target_do gangwondo
+uv run python scripts/bench_serving.py --model_path outputs/grpo_arm1_merged --target_do gangwondo
 ```
 
 ### Evaluation references (grounding for the leaderboard)

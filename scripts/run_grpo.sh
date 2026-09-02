@@ -9,9 +9,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# 1) Interpreter: the project env is the conda env that has ko_dialect + trl + unsloth.
-#    Override with PYTHON=... if your env differs.
-PYTHON="${PYTHON:-/home/jinmang2/miniconda3/envs/balaenoptera/bin/python}"
+# 1) Interpreter: the uv-managed project venv, which has ko_dialect + trl + unsloth.
+#    Build it with `uv sync --extra dev --extra gpu`. Override with PYTHON=... if needed.
+PYTHON="${PYTHON:-./.venv/bin/python}"
 
 # 2) bitsandbytes fix: bnb 0.49 looks for libnvJitLink.so.13 (CUDA 13 / torch cu130) but
 #    it is not on the default loader path, so `import bitsandbytes` fails with
