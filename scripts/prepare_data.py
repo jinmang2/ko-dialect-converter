@@ -1,3 +1,27 @@
+"""Stage -1: AI-Hub 방언 라벨링 JSON → Arrow (`outputs/dialect_raw_{new,old}`).
+
+파이프라인의 최초 진입점. 두 개의 서로 다른 코퍼스 포맷을 다루며, **트리 단위로** 분기한다
+(한 디렉터리에 두 포맷을 섞지 말 것):
+
+    new (139-1/139-2, 2022 중·노년층)  기본값. `transcription.sentences[].{standard,dialect}`
+                                       + F0(`intonations`) + `stt`(Clova ASR) + 주석 라벨
+    old (2020 한국어 방언 발화)         `--use_old_format`. `utterance[].{standard_form,
+                                       dialect_form}` + AI-Hub 주석 태그 정제가 필요
+
+출력 컬럼(new): id / do / split / speech_kind / standard / dialect / is_identical /
+dialect_eojeol_map / prosody / prosody_marker / dialect_eojeol_prosody / intent / emotion /
+stt_hypothesis / grammar_type / domain / speaker_id / speaker_gender / speaker_birth_year.
+
+사용:
+    python scripts/prepare_data.py --data_path data/aihub --output_dir outputs
+    python scripts/prepare_data.py --data_path data/aihub_v1 --use_old_format
+    python scripts/prepare_data.py --data_path data/aihub --n_samples 100   # speedrun
+
+빌드 직후 게이트: `scripts/audit_raw_signal.py`(신호·길이) +
+`scripts/audit_corpus_fields.py leakage`(화자 누출). 지역이 `unknown`으로 새면 stage0이
+조용히 전량 폐기하므로 반드시 확인할 것.
+"""
+
 from __future__ import annotations
 
 import json
@@ -17,6 +41,7 @@ import fire
 from datasets import Dataset, DatasetDict
 from tqdm.auto import tqdm
 
+from ko_dialect import corpora
 from ko_dialect.data import prosody as data_prosody
 
 PROSODY_MARKER_POLICY = data_prosody.PROSODY_MARKER_POLICY
@@ -220,6 +245,18 @@ def _process_single_json(
         st_raw = segment.get("startTime")
         segment["_start_seconds"] = t2s(st_raw) if st_raw else -1.0
 
+    # Side channels the corpus always shipped and the pipeline used to discard.
+    # `stt` is a commercial ASR pass (Naver Clova) over the SAME audio, segmented with its
+    # own timestamps, so it can be sliced per sentence exactly like `transcription.segments`.
+    script = data.get("script") or {}
+    speaker_index = {
+        sp.get("speakerId"): sp for sp in (data.get("speaker") or []) if sp.get("speakerId")
+    }
+    stt_segments = (data.get("stt") or {}).get("segments") or []
+    for segment in stt_segments:
+        st_raw = segment.get("startTime")
+        segment["_start_seconds"] = t2s(st_raw) if st_raw else -1.0
+
     samples = []
     for sentence in sentences:
         standard = (sentence.get("standard") or "").strip()
@@ -332,6 +369,20 @@ def _process_single_json(
             intonations, s_time, e_time, eojeols
         )
 
+        # Slice the ASR pass to this sentence's time span (same rule as the human
+        # segments above). Empty when the file carries no `stt` block — the column stays
+        # present but null, so downstream code can filter on it instead of crashing.
+        stt_hypothesis = (
+            " ".join(
+                value
+                for seg in stt_segments
+                if s_time <= seg["_start_seconds"] <= e_time + 0.01
+                and (value := (seg.get("value") or "").strip())
+            ).strip()
+            or None
+        )
+        speaker_meta = speaker_index.get(sentence.get("speakerId")) or {}
+
         sentence_id = (
             f"{data.get('fileName', os.path.basename(path))}_{int(sentence.get('sentenceId', 0))}"
         )
@@ -350,20 +401,47 @@ def _process_single_json(
                 "dialect_eojeol_prosody": dialect_eojeol_prosody,
                 "intent": get_annotation(data, sentence.get("sentenceId"), "intents"),
                 "emotion": get_annotation(data, sentence.get("sentenceId"), "emotions"),
+                # --- fields the corpus always carried but the pipeline used to drop ---
+                # `stt_hypothesis` is a REAL ASR transcript (Naver Clova) of the same
+                # audio, so `stt_hypothesis -> standard` is a task whose input actually
+                # exists at inference time, unlike `gold dialect transcript -> standard`.
+                "stt_hypothesis": stt_hypothesis,
+                # DEC / YNI / WHI / IMP / PRO — lets evaluation stratify by sentence type,
+                # which is where the short-utterance failures concentrate (interrogatives).
+                "grammar_type": get_annotation(data, sentence.get("sentenceId"), "grammarTypes"),
+                "domain": script.get("domain"),
+                "speaker_id": sentence.get("speakerId"),
+                "speaker_gender": speaker_meta.get("gender"),
+                "speaker_birth_year": speaker_meta.get("birthYear"),
             }
         )
     return samples
 
 
 def _process_old_single_json(path: os.PathLike | str, data: dict) -> list[dict]:
-    # Extract region, split from path string:
-    #   한국어 방언 발화({REGION})/{SPLIT}/*.json
+    # Extract region + split from the path. Both are layout-sensitive, and the layout is
+    # NOT stable: a fresh `aihubshell` download extracts to
+    #   121/016.한국어_방언_발화_데이터(제주도)/01.데이터/2.Validation/(new3)라벨링데이터/<zip>/*.json
+    # (underscores, an extra "_데이터", numbered "2.Validation", and the JSON's parent is
+    # the unzipped bundle — not the split). Matching a literal "한국어 방언 발화(...)" or
+    # requiring parent.name == "Validation" silently yields do="unknown", which stage0 then
+    # drops via SUPPORTED_DO — a whole corpus vanishing with no error. So resolve both by
+    # scanning path components, most-specific first, for a known region / split marker.
     path = Path(path)
-    re_region = re.compile(r"한국어 방언 발화\((.+?)\)")
-    split_map = {"Training": "train", "Validation": "valid"}
-    m = re_region.search(str(path))
-    region = REGION_MAP.get(m.group(1), m.group(1)) if m else "unknown"
-    split = split_map.get(path.parent.name, path.parent.name.lower())
+    region = "unknown"
+    for part in reversed(path.parts):
+        hit = next((ko for ko in REGION_MAP if ko in part), None)
+        if hit:
+            region = REGION_MAP[hit]
+            break
+    split = "unknown"
+    for part in reversed(path.parts):
+        if "Training" in part:
+            split = "train"
+            break
+        if "Validation" in part:
+            split = "valid"
+            break
 
     # Construct samples
     samples = []
@@ -508,9 +586,16 @@ def prepare_dialect_dataset(
             tqdm.write(f"[Warning] {len(failed)} failed files → {failed_path}")
 
         # 🔄 [Reduce]
+        # Every worker opens train/valid/unknown handles up front, so a split with no rows
+        # still leaves a zero-byte worker file behind. Treating those as "split present"
+        # hands an empty .jsonl to Dataset.from_json, which dies with a bare StopIteration.
+        # That is the normal case for a single-split subset — e.g. a Validation-only sample
+        # download, or an incremental per-region build — so filter on real content.
         splits_found = []
         for split in ["train", "valid"]:
-            worker_files = list(tmp_dir.glob(f"{split}_worker_*.jsonl"))
+            worker_files = [
+                wf for wf in tmp_dir.glob(f"{split}_worker_*.jsonl") if wf.stat().st_size > 0
+            ]
             if not worker_files:
                 continue
             splits_found.append(split)
@@ -520,6 +605,12 @@ def prepare_dialect_dataset(
                     with open(wf, "rb") as f:
                         shutil.copyfileobj(f, master_f)  # 커널 레벨 고속 버퍼 스트리밍
                     wf.unlink()
+
+        if not splits_found:
+            raise ValueError(
+                f"No usable samples parsed from {len(files)} file(s). Check --use_old_format "
+                "(old corpora need it), the region/split directory names, and failed_files.json."
+            )
 
         dataset = DatasetDict(
             {split: Dataset.from_json(str(tmp_dir / f"{split}.jsonl")) for split in splits_found}
@@ -556,9 +647,10 @@ def main(
     encoding: str = "utf-8",
     **kwargs,
 ) -> None:
-    # Default points at the new-dialect corpus subtree. For old-dialect runs pass
-    # --data_path raw_data/old_dialect --use_old_format (each subtree is single-format).
-    data_path = Path(data_path or Path(__file__).parents[1] / "raw_data" / "new_dialect")
+    # Default points at the new-format corpus tree (139-1 + 139-2, five regions). Old-format
+    # v1 lives in its own tree: --data_path data/aihub/v1_2020 --use_old_format. Keeping one
+    # parser per tree is the whole reason the registry pins version to directory.
+    data_path = Path(data_path or corpora.tree_root(corpora.V2_2022))
     output_dir = Path(output_dir or Path(__file__).parents[1] / "outputs")
 
     if n_samples or speedrun:
