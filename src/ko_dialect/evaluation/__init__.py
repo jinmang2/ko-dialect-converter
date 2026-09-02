@@ -31,7 +31,9 @@ from .metrics import compute_dfs, compute_eojeol_accuracy, compute_tdr, evaluate
 from .sampling import (
     bucket_shares,
     changed_eojeol_count,
-    edit_bucket,
+    char_edit_bucket,
+    difficulty_bucket,
+    lev_distance,
     stratified_indices,
 )
 from .significance import bootstrap_ci, paired_bootstrap, significance_marker
@@ -60,7 +62,9 @@ __all__ = [
     "aggregate_rows",
     "bucket_shares",
     "changed_eojeol_count",
-    "edit_bucket",
+    "char_edit_bucket",
+    "difficulty_bucket",
+    "lev_distance",
     "stratified_indices",
     "bootstrap_ci",
     "paired_bootstrap",

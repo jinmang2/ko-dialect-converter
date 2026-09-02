@@ -31,7 +31,7 @@ sys.path.insert(0, str(_REPO / "src"))
 from ko_dialect.evaluation.sampling import (  # noqa: E402
     bucket_shares,
     changed_eojeol_count,
-    edit_bucket,
+    difficulty_bucket,
     stratified_indices,
 )
 
@@ -143,7 +143,9 @@ def edits(dataset: str = RAW_DEFAULT, split: str = "valid", do: str = "gangwondo
         f"  chars: dialect mean = {mean(dia_chars):6.1f}   standard mean = {mean(std_chars):6.1f}"
         f"   Δ = {mean(dia_chars) - mean(std_chars):+.2f}"
     )
-    shares = bucket_shares([edit_bucket(d, s) for d, s in zip(sub["dialect"], sub["standard"])])
+    shares = bucket_shares(
+        [difficulty_bucket(d, s) for d, s in zip(sub["dialect"], sub["standard"])]
+    )
     print("  difficulty mix: " + "  ".join(f"{b}={shares[b] * 100:.1f}%" for b in BUCKETS))
 
 
@@ -180,7 +182,7 @@ def evalset(
             print(f"{do:<14}(no rows)")
             continue
 
-        buckets = [edit_bucket(d, s) for d, s in zip(pop["dialect"], pop["standard"])]
+        buckets = [difficulty_bucket(d, s) for d, s in zip(pop["dialect"], pop["standard"])]
         p = bucket_shares(buckets)
         h = bucket_shares(buckets[:n])
         s = bucket_shares([buckets[i] for i in stratified_indices(buckets, n)])

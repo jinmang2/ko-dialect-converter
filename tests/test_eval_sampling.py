@@ -7,10 +7,13 @@ population, and the selection is a pure function of its inputs.
 
 from __future__ import annotations
 
+from ko_dialect.data.labels import dialect_region
 from ko_dialect.evaluation.sampling import (
     bucket_shares,
     changed_eojeol_count,
-    edit_bucket,
+    char_edit_bucket,
+    difficulty_bucket,
+    lev_distance,
     stratified_indices,
 )
 
@@ -22,11 +25,11 @@ def test_changed_eojeol_count_counts_positional_and_length_differences():
     assert changed_eojeol_count("바 사 아", "가 나 다") == 3
 
 
-def test_edit_bucket_puts_the_copy_friendly_case_in_its_own_stratum():
-    assert edit_bucket("가 나 라", "가 나 다") == "1"
-    assert edit_bucket("바 사 다", "가 나 다") == "2-3"
-    assert edit_bucket(" ".join("바사아자마가"), " ".join("가나다라마바")) == "4-6"
-    assert edit_bucket(" ".join("abcdefgh"), " ".join("12345678")) == "7+"
+def test_difficulty_bucket_puts_the_copy_friendly_case_in_its_own_stratum():
+    assert difficulty_bucket("가 나 라", "가 나 다") == "1"
+    assert difficulty_bucket("바 사 다", "가 나 다") == "2-3"
+    assert difficulty_bucket(" ".join("바사아자마가"), " ".join("가나다라마바")) == "4-6"
+    assert difficulty_bucket(" ".join("abcdefgh"), " ".join("12345678")) == "7+"
 
 
 def _pairs(spec: list[tuple[str, int]]) -> list[str]:
@@ -91,3 +94,31 @@ def test_degenerate_inputs():
     assert stratified_indices(["1", "2-3"], 0) == []
     assert stratified_indices(["1", "2-3"], 5) == [0, 1]  # n over population returns all
     assert bucket_shares([]) == {}
+
+
+# ---------------------------------------------------------------------------
+# Helpers consolidated out of scripts/compare_sft_grpo.py and
+# scripts/eval_grpo_checkpoints.py, which each carried a byte-identical copy.
+# ---------------------------------------------------------------------------
+
+
+def test_lev_distance():
+    assert lev_distance("같다", "같다") == 0
+    assert lev_distance("", "abc") == 3
+    assert lev_distance("abc", "") == 3
+    assert lev_distance("밥 먹었니", "밥 먹었나") == 1
+    assert lev_distance("kitten", "sitting") == 3
+
+
+def test_char_edit_bucket_edges():
+    a = "0123456789"
+    assert char_edit_bucket(a, a) == "small"  # distance 0
+    assert char_edit_bucket(a, "012345678X") == "small"  # 1 <= BUCKET_SMALL
+    assert char_edit_bucket(a, "012XXXXXXX") == "med"  # 7, inside BUCKET_MED
+    assert char_edit_bucket(a, "XXXXXXXXXX") == "large"  # 10 > BUCKET_MED
+
+
+def test_dialect_region_groups_by_prefix_and_degrades_gracefully():
+    assert dialect_region("gangwondo") == "gangwon"
+    assert dialect_region("GYEONGSANGDO") == "gyeongsang"
+    assert dialect_region("jeollado") == "other"  # region without data yet

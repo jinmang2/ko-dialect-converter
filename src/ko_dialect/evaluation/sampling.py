@@ -48,8 +48,13 @@ def changed_eojeol_count(dialect: str, standard: str) -> int:
     return sum(1 for i in range(common) if a[i] != b[i]) + abs(len(a) - len(b))
 
 
-def edit_bucket(dialect: str, standard: str) -> str:
-    """Difficulty stratum for one pair — see ``_BUCKET_EDGES``."""
+def difficulty_bucket(dialect: str, standard: str) -> str:
+    """Difficulty stratum for one pair, in changed eojeol — see ``_BUCKET_EDGES``.
+
+    Distinct from ``char_edit_bucket``: this one strata for *selection* (how much of
+    the sentence the model has to change), the other reports small/med/large character
+    edit distance in comparison tables.
+    """
     changed = changed_eojeol_count(dialect, standard)
     for name, low, high in _BUCKET_EDGES:
         if low <= changed <= high:
@@ -124,3 +129,42 @@ def stratified_indices(buckets: Sequence[str], n: int) -> list[int]:
     for name in order:
         picked.extend(by_bucket[name][: alloc[name]])
     return sorted(picked)
+
+
+# ---------------------------------------------------------------------------
+# Character-level edit distance — reporting buckets for the comparison tables.
+# ---------------------------------------------------------------------------
+# scripts/compare_sft_grpo.py and scripts/eval_grpo_checkpoints.py each carried a
+# byte-identical copy of these three helpers; they live here now so the bucket edges
+# cannot drift apart between the two reports.
+
+BUCKET_SMALL = 3
+BUCKET_MED = 8
+
+
+def lev_distance(a: str, b: str) -> int:
+    """Character-level Levenshtein distance."""
+    if a == b:
+        return 0
+    la, lb = len(a), len(b)
+    if la == 0:
+        return lb
+    if lb == 0:
+        return la
+    prev = list(range(lb + 1))
+    for i, ca in enumerate(a, 1):
+        curr = [i] + [0] * lb
+        for j, cb in enumerate(b, 1):
+            curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + (ca != cb))
+        prev = curr
+    return prev[lb]
+
+
+def char_edit_bucket(standard: str, dialect: str) -> str:
+    """``small`` / ``med`` / ``large`` by character edit distance."""
+    d = lev_distance(standard, dialect)
+    if d <= BUCKET_SMALL:
+        return "small"
+    if d <= BUCKET_MED:
+        return "med"
+    return "large"

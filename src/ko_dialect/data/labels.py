@@ -37,3 +37,18 @@ def num_labels_for(labels: Iterable[int]) -> int:
     Empty input yields 1 (never crashes).
     """
     return max(labels, default=0) + 1
+
+
+def dialect_region(do: str) -> str:
+    """Short region key for grouping in reports (``gangwondo`` -> ``gangwon``).
+
+    Was duplicated in scripts/compare_sft_grpo.py and scripts/eval_grpo_checkpoints.py.
+    Anything outside the two regions with data today collapses to ``other``, so a report
+    keeps working when a new region lands before its bucket labels do.
+    """
+    lowered = do.lower()
+    if "gangwon" in lowered:
+        return "gangwon"
+    if "gyeongsang" in lowered:
+        return "gyeongsang"
+    return "other"

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from .checkpoints import resolve_best_checkpoint
-from .sampling import edit_bucket, stratified_indices
+from .sampling import difficulty_bucket, stratified_indices
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ def load_eval_samples(
     ds = ds.filter(lambda x: x["do"] == target_do and not x["is_identical"])
     if n and n < len(ds):
         if strategy == "stratified":
-            buckets = [edit_bucket(d, s) for d, s in zip(ds["dialect"], ds["standard"])]
+            buckets = [difficulty_bucket(d, s) for d, s in zip(ds["dialect"], ds["standard"])]
             ds = ds.select(stratified_indices(buckets, n))
         else:
             ds = ds.select(range(n))
